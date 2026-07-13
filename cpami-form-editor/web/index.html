@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CPAMI 二維書表資料編輯器</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">二維</span>
+      <h1>建照書表資料編輯器</h1>
+    </div>
+    <div class="toolbar" aria-label="檔案工具">
+      <button class="button secondary" id="loadDataButton" type="button">載入 data.txt</button>
+      <button class="button secondary" id="openConvertButton" type="button">匯入 CSV／XML</button>
+      <details class="action-menu" id="actionMenu">
+        <summary class="button ghost">更多</summary>
+        <div class="action-menu-panel">
+          <button id="newCaseButton" type="button">新空白案件</button>
+          <button id="openSamplesButton" type="button">下載範例 CSV／XML</button>
+          <button id="validateButton" type="button">檢查資料</button>
+        </div>
+      </details>
+      <button class="button primary" id="exportButton" type="button">匯出 data.txt</button>
+      <input id="dataFileInput" type="file" accept=".txt,text/plain" hidden>
+    </div>
+  </header>
+
+  <div class="statusbar" role="status">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">正在讀取格式模板…</span>
+    <span class="status-source" id="sourceText"></span>
+  </div>
+
+  <div class="app-shell">
+    <aside class="sidebar">
+      <h2 class="sidebar-title">資料群組</h2>
+      <nav id="tableNav" class="table-nav" aria-label="資料表"></nav>
+    </aside>
+
+    <main class="workspace">
+      <section class="workspace-head">
+        <div>
+          <code class="table-raw-name raw-only" id="tableRawName">—</code>
+          <h2 id="tableTitle">載入中</h2>
+          <div class="form-chips" id="formChips"></div>
+        </div>
+        <div class="record-controls" id="recordControls">
+          <label for="recordSelect">目前記錄</label>
+          <select id="recordSelect"></select>
+          <button class="record-button" id="addRecordButton" type="button" title="新增一筆">新增</button>
+          <button class="record-button" id="copyRecordButton" type="button" title="複製目前記錄">複製</button>
+          <button class="record-button danger" id="deleteRecordButton" type="button" title="刪除目前記錄">刪除</button>
+          <button class="button secondary compact" id="bulkEditButton" type="button">批次輸入</button>
+        </div>
+      </section>
+
+      <details class="notice" id="tableNotice" hidden>
+        <summary>填寫提醒</summary>
+        <p id="tableNoticeText"></p>
+      </details>
+
+      <section class="field-panel">
+        <div class="field-tools">
+          <label class="search-box">
+            <span aria-hidden="true">⌕</span>
+            <input id="fieldSearch" type="search" placeholder="搜尋欄位">
+          </label>
+          <span id="fieldCount" class="field-count"></span>
+          <button class="quiet-button" id="toggleSectionsButton" type="button">全部收合</button>
+          <button class="quiet-button" id="toggleRawFieldsButton" type="button" aria-pressed="false">顯示原始欄名</button>
+        </div>
+        <div id="emptyState" class="empty-state" hidden>
+          <strong>這個資料群組目前沒有記錄</strong>
+          <p>按右上角「＋」建立第一筆。</p>
+        </div>
+        <form id="editorForm" autocomplete="off">
+          <div id="fieldGroups"></div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="validationDialog" class="dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="eyebrow">匯出前檢查</p>
+        <h2>資料驗證結果</h2>
+      </div>
+      <button class="close-button" data-close-dialog="validationDialog" type="button" aria-label="關閉">×</button>
+    </div>
+    <div id="validationSummary"></div>
+    <div id="validationResults" class="validation-results"></div>
+    <div class="dialog-actions">
+      <button class="button secondary" data-close-dialog="validationDialog" type="button">關閉</button>
+    </div>
+  </dialog>
+
+  <dialog id="convertDialog" class="dialog convert-dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="eyebrow">來源資料轉換</p>
+        <h2>CSV／XML 欄位對接</h2>
+      </div>
+      <button class="close-button" data-close-dialog="convertDialog" type="button" aria-label="關閉">×</button>
+    </div>
+    <div class="convert-grid">
+      <label class="control">
+        <span>1. 來源檔案</span>
+        <input id="sourceFileInput" type="file" accept=".csv,.tsv,.xml,text/csv,text/xml,application/xml">
+      </label>
+      <label class="control">
+        <span>2. 匯入哪個資料群組</span>
+        <select id="targetTableSelect"></select>
+      </label>
+      <label class="control">
+        <span>3. 寫入方式</span>
+        <select id="importModeSelect">
+          <option value="replace">取代該群組目前資料</option>
+          <option value="append">附加在目前資料之後</option>
+        </select>
+      </label>
+    </div>
+    <div id="sourcePreview" class="source-preview muted-box">
+      選擇 CSV、TSV 或 XML 後，這裡會列出來源欄位並自動猜測 data.txt 目標欄位。
+    </div>
+    <div id="mappingArea" class="mapping-area"></div>
+    <div class="dialog-actions">
+      <button class="button secondary" data-close-dialog="convertDialog" type="button">取消</button>
+      <button class="button primary" id="applyMappingButton" type="button" disabled>套用欄位對應</button>
+    </div>
+  </dialog>
+
+  <dialog id="bulkDialog" class="dialog bulk-dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="eyebrow">快速新增多筆資料</p>
+        <h2 id="bulkDialogTitle">批次表格</h2>
+      </div>
+      <button class="close-button" data-close-dialog="bulkDialog" type="button" aria-label="關閉">×</button>
+    </div>
+    <div class="bulk-toolbar">
+      <button class="button secondary" id="bulkAddOneButton" type="button">新增 1 列</button>
+      <button class="button secondary" id="bulkAddTenButton" type="button">新增 10 列</button>
+      <button class="button secondary" id="bulkDuplicateButton" type="button">複製勾選列</button>
+      <button class="button danger-button" id="bulkDeleteButton" type="button">刪除勾選列</button>
+      <span class="bulk-tip">可直接貼上 Excel／CSV 多列資料</span>
+    </div>
+    <div id="bulkTableArea" class="bulk-table-area"></div>
+    <div class="dialog-actions">
+      <button class="button primary" data-close-dialog="bulkDialog" type="button">完成</button>
+    </div>
+  </dialog>
+
+  <dialog id="sampleDialog" class="dialog sample-dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="eyebrow">可直接回匯的格式範例</p>
+        <h2>下載範例 CSV／XML</h2>
+      </div>
+      <button class="close-button" data-close-dialog="sampleDialog" type="button" aria-label="關閉">×</button>
+    </div>
+    <div class="sample-content">
+      <label class="control">
+        <span>資料群組</span>
+        <select id="sampleTableSelect"></select>
+      </label>
+      <div id="sampleDescription" class="muted-box"></div>
+    </div>
+    <div class="dialog-actions">
+      <button class="button secondary" data-close-dialog="sampleDialog" type="button">關閉</button>
+      <button class="button secondary" id="downloadSampleCsvButton" type="button">下載 UTF-8 CSV</button>
+      <button class="button primary" id="downloadSampleXmlButton" type="button">下載 UTF-8 XML</button>
+    </div>
+  </dialog>
+
+  <dialog id="optionPickerDialog" class="dialog option-picker-dialog">
+    <div class="dialog-head">
+      <h2 id="optionPickerTitle">選擇資料</h2>
+      <button class="close-button" data-close-dialog="optionPickerDialog" type="button" aria-label="關閉">×</button>
+    </div>
+    <div class="option-picker-body">
+      <label class="option-picker-search" for="optionPickerSearch">
+        <span aria-hidden="true">⌕</span>
+        <input id="optionPickerSearch" type="search" autocomplete="off" placeholder="搜尋名稱或代碼">
+      </label>
+      <div id="optionPickerRecent" class="option-picker-recent" hidden></div>
+      <div id="optionPickerSummary" class="option-picker-summary"></div>
+      <div id="optionPickerList" class="option-picker-list" role="listbox" aria-label="可選資料"></div>
+    </div>
+    <div class="dialog-actions option-picker-actions">
+      <button class="button secondary" id="clearPickerButton" type="button">清除／留空</button>
+      <button class="button secondary" data-close-dialog="optionPickerDialog" type="button">取消</button>
+    </div>
+  </dialog>
+
+  <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>

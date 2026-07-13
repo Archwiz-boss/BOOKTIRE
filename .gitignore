@@ -1,0 +1,10 @@
+# Real-case drawing and print PDFs
+/cpami/Arch2016C/print/**/*.[pP][dD][fF]
+/cpami/Arch2016C/pic/**/*.[pP][dD][fF]
+
+# Local development tools
+/.tools/
+
+# Python runtime cache
+__pycache__/
+*.py[cod]

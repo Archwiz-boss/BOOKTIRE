@@ -224,8 +224,12 @@ const TABLE_CONFIG = {
 const FORM_SETS = {
   A: {
     label: "建照申請",
+    codes: ["A"],
     tables: ["BMSBASE", "BMSLAN", "BMSLANOWNER", "BMSMEMO", "BMSP01", "BMSP02", "BMSP03", "BMSP04", "BMSPARK", "BMSSTAIR", "BMSWORK"],
   },
+  B: { label: "施工管理", codes: ["B", "G"], tables: [] },
+  C: { label: "使用管理", codes: ["C"], tables: [] },
+  D: { label: "拆除與其他", codes: ["D", "F", "H"], tables: [] },
 };
 
 const CODE_OPTIONS = {
@@ -537,6 +541,11 @@ function currentRows() {
   return activeTables()[state.activeTable] || [];
 }
 
+function formCatalogForSet(formSet) {
+  const codes = new Set(FORM_SETS[formSet]?.codes || []);
+  return (state.codebook?.codeTypes?.ALLRPT || []).filter((row) => codes.has(row.code));
+}
+
 function currentRecord() {
   return currentRows()[state.activeRecord] || null;
 }
@@ -551,6 +560,24 @@ function recordCaption(table, record, index) {
   const value = field ? record[field] : "";
   const sequence = record.person_seq || record.Person_seq || record.PERSON_SEQ || index + 1;
   return `${sequence}. ${value || `第 ${index + 1} 筆`}`;
+}
+
+function switchFormSet(formSet) {
+  if (!Object.hasOwn(FORM_SETS, formSet) || state.formSet === formSet) return;
+  state.formSet = formSet;
+  renderAll();
+}
+
+function renderFormSetSwitcher() {
+  $("#formSetSwitcher").innerHTML = Object.entries(FORM_SETS).map(([formSet, config]) => {
+    const count = formCatalogForSet(formSet).length;
+    const selected = formSet === state.formSet;
+    const label = `${formSet} ${config.label}`;
+    return `<button class="form-set-button ${selected ? "active" : ""}" type="button" data-form-set="${formSet}" aria-label="${escapeHtml(`${label}，${count} 份書表`)}" aria-pressed="${selected}">
+      <span>${escapeHtml(label)}</span><strong>${count}</strong>
+    </button>`;
+  }).join("");
+  $$("[data-form-set]").forEach((button) => button.addEventListener("click", () => switchFormSet(button.dataset.formSet)));
 }
 
 function renderNav() {
@@ -568,6 +595,15 @@ function renderNav() {
     $("#fieldSearch").value = "";
     renderAll();
   }));
+}
+
+function renderFormSetPlaceholder() {
+  const config = FORM_SETS[state.formSet];
+  const forms = formCatalogForSet(state.formSet);
+  $("#formSetPlaceholderTitle").textContent = `${state.formSet} ${config.label}`;
+  $("#formSetCatalogBody").innerHTML = forms.length
+    ? forms.map((form) => `<tr><td><code>${escapeHtml(form.mark || "—")}</code></td><td>${escapeHtml(form.label)}</td></tr>`).join("")
+    : `<tr><td colspan="2">目前代碼庫沒有這一組的書表目錄。</td></tr>`;
 }
 
 function renderRecordControls() {
@@ -789,7 +825,18 @@ function renderEditor() {
 }
 
 function renderAll() {
+  renderFormSetSwitcher();
   renderNav();
+  const editable = FORM_SETS[state.formSet].tables.length > 0;
+  $("#formSetPlaceholder").hidden = editable;
+  $("#editorWorkspaceHead").hidden = !editable;
+  $("#tableNotice").hidden = !editable;
+  $("#editorFieldPanel").hidden = !editable;
+  if (!editable) {
+    renderFormSetPlaceholder();
+    applyRawFieldVisibility();
+    return;
+  }
   renderRecordControls();
   renderEditor();
   applyRawFieldVisibility();

@@ -14,7 +14,7 @@ const stylesPath = path.join(projectRoot, "web", "styles.css");
 let source = fs.readFileSync(appPath, "utf8");
 source = source.slice(0, source.indexOf('$("#loadDataButton")'));
 source += `\nglobalThis.__test = {
-  TABLE_CONFIG, FORM_SETS, state, activeTables, optionsFor, allFields, sampleRowsFor,
+  TABLE_CONFIG, FORM_SETS, state, activeTables, formCatalogForSet, optionsFor, allFields, sampleRowsFor,
   buildSampleCsv, buildSampleXml, parseDelimited, guessTarget, codeSpecFor, CODE_OPTIONS,
   COPY_CURRENT_TO_OLD, copyMappedValues, sortOptionsByName, leadingChineseNumber,
   fieldDefinition, renderField, renderBulkControl, bulkColumnClass, sectionStartsOpen,
@@ -41,7 +41,9 @@ app.state.tables = { BMSBASE: [{ BMPAS: "I80" }] };
 
 assert.equal(app.state.schemaVersion, null);
 assert.equal(app.state.formSet, "A");
+assert.deepEqual(Object.keys(app.FORM_SETS), ["A", "B", "C", "D"]);
 assert.deepEqual(Array.from(app.FORM_SETS.A.tables), Object.keys(app.TABLE_CONFIG), "A form-set tables must match TABLE_CONFIG keys and order");
+for (const formSet of ["B", "C", "D"]) assert.equal(app.FORM_SETS[formSet].tables.length, 0, `${formSet} editing groups must stay empty until later prompts`);
 assert.strictEqual(app.activeTables(), app.state.tables, "activeTables must expose the current case tables");
 assert(source.includes("state.schemaVersion = data.schemaVersion"));
 assert(source.includes("未載入案件，可載入 data.txt 或建立新空白案件"));
@@ -55,6 +57,18 @@ assert.equal(codebook.version, 2);
 assert.equal(codebook.source.bldcodeRows, 22383);
 assert.equal(codebook.officialSections.length, 1626);
 assert.equal(new Set(codebook.officialSections.map((row) => row.district)).size, 29);
+
+const formSetCodes = { A: ["A"], B: ["B", "G"], C: ["C"], D: ["D", "F", "H"] };
+for (const [formSet, codes] of Object.entries(formSetCodes)) {
+  const expected = codebook.codeTypes.ALLRPT.filter((row) => codes.includes(row.code));
+  const actual = app.formCatalogForSet(formSet);
+  assert.equal(actual.length, expected.length, `${formSet} catalog count must follow current ALLRPT rows`);
+  assert.equal(
+    JSON.stringify(Array.from(actual, ({ code, mark, label }) => ({ code, mark, label }))),
+    JSON.stringify(expected.map(({ code, mark, label }) => ({ code, mark, label }))),
+    `${formSet} catalog entries must come directly from ALLRPT`,
+  );
+}
 
 const districts = app.optionsFor("BMSLAN", "DIST", {});
 assert.equal(districts.length, 29);
@@ -161,6 +175,9 @@ const oldLandSectionIndex = app.TABLE_CONFIG.BMSLAN.sections.findIndex((section)
 assert.equal(app.sectionStartsOpen("BMSLAN", app.TABLE_CONFIG.BMSLAN.sections[oldLandSectionIndex], oldLandSectionIndex), false, "Old-value sections should start collapsed");
 
 assert(index.includes('id="actionMenu"'), "Secondary file actions should be grouped into a compact menu");
+assert(index.includes('id="formSetSwitcher"'), "The sidebar should contain the form-set segmented control");
+assert(index.includes('id="formSetPlaceholder"') && index.includes('id="formSetCatalogBody"'), "Unavailable form sets should use the catalog placeholder page");
+assert(index.includes("此書表組尚未開放編輯。") && index.includes("資料仍完整保留於 data.txt，匯出不受影響。"));
 assert(index.includes('id="toggleSectionsButton"'), "Form sections should support one-click collapse/expand");
 assert(index.includes('id="toggleRawFieldsButton"'), "Raw field names should be opt-in");
 assert(index.includes('id="optionPickerRecent"'), "The option picker should expose recent selections");
@@ -185,6 +202,9 @@ assert((styles.match(/scrollbar-gutter:\s*stable/g) || []).length >= 2, "Page an
 assert(styles.includes("min-width: 96px; width: 96px; max-width: 96px"), "Short bulk columns should be reduced to roughly two-thirds width");
 assert(styles.includes("grid-template-columns: minmax(54px, 1fr) 30px"), "Bulk code inputs and picker arrows should use the compact layout");
 assert(!styles.includes("min-width: 126px"), "The previous wide default bulk columns should be removed");
+assert(styles.includes(".form-set-switcher") && styles.includes('.form-set-button[aria-pressed="true"]'), "Form-set selection needs segmented styling and a non-color accessibility state");
+assert(styles.includes("@media (max-width: 920px)") && styles.includes(".form-set-switcher { display: flex; overflow-x: auto;"), "The form-set switcher should become horizontally scrollable at 920px");
+assert(!/TODO|coming soon/i.test(index), "Placeholder copy must remain user-facing Traditional Chinese");
 
 const unmappedCodeFields = [];
 for (const table of Object.keys(app.TABLE_CONFIG)) {

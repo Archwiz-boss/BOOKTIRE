@@ -36,12 +36,26 @@
 
   <div class="app-shell">
     <aside class="sidebar">
+      <div id="formSetSwitcher" class="form-set-switcher" role="group" aria-label="切換書表組"></div>
       <h2 class="sidebar-title">資料群組</h2>
       <nav id="tableNav" class="table-nav" aria-label="資料表"></nav>
     </aside>
 
     <main class="workspace">
-      <section class="workspace-head">
+      <section id="formSetPlaceholder" class="form-set-placeholder" aria-labelledby="formSetPlaceholderTitle" hidden>
+        <p class="eyebrow">書表目錄</p>
+        <h2 id="formSetPlaceholderTitle">施工管理</h2>
+        <p class="form-set-unavailable">此書表組尚未開放編輯。</p>
+        <div class="form-set-preservation">資料仍完整保留於 data.txt，匯出不受影響。</div>
+        <div class="form-catalog-scroll" role="region" aria-label="目前書表組目錄" tabindex="0">
+          <table class="form-catalog-table">
+            <thead><tr><th scope="col">書表編號</th><th scope="col">書表名稱</th></tr></thead>
+            <tbody id="formSetCatalogBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="workspace-head" id="editorWorkspaceHead">
         <div>
           <code class="table-raw-name raw-only" id="tableRawName">—</code>
           <h2 id="tableTitle">載入中</h2>
@@ -65,7 +79,7 @@
         <p id="tableNoticeText"></p>
       </details>
 
-      <section class="field-panel">
+      <section class="field-panel" id="editorFieldPanel">
         <div class="field-tools">
           <label class="search-box">
             <span aria-hidden="true">⌕</span>

@@ -2,6 +2,10 @@
 /cpami/Arch2016C/print/**/*.[pP][dD][fF]
 /cpami/Arch2016C/pic/**/*.[pP][dD][fF]
 
+# Local real-case data and legacy CPAMI program
+/data.txt
+/cpami/
+
 # Local development tools
 /.tools/
 

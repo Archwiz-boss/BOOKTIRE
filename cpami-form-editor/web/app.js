@@ -338,6 +338,7 @@ const COPY_CURRENT_TO_OLD = {
 
 const state = {
   bootstrap: null,
+  schemaVersion: null,
   codebook: null,
   tables: {},
   activeTable: "BMSBASE",
@@ -1559,6 +1560,7 @@ async function bootstrap() {
   try {
     const [data, codebook] = await Promise.all([apiJson("/api/bootstrap"), apiJson("/codebook.json")]);
     state.bootstrap = data;
+    state.schemaVersion = data.schemaVersion;
     state.codebook = codebook;
     state.tables = deepClone(data.tables);
     state.showRawFields = storageGet("cpami-show-raw-fields") === "1";
@@ -1566,7 +1568,12 @@ async function bootstrap() {
     $("#targetTableSelect").innerHTML = tableOptions;
     $("#sampleTableSelect").innerHTML = tableOptions;
     renderAll();
-    setStatus("資料已就緒，可以開始編輯", "ok");
+    setStatus(
+      data.sampleLoaded
+        ? "資料已就緒，可以開始編輯"
+        : "未載入案件，可載入 data.txt 或建立新空白案件",
+      "ok",
+    );
   } catch (error) {
     setStatus("無法連接本機格式服務", "error");
     toast(error.message, "error");

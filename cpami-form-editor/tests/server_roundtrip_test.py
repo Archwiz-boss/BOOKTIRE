@@ -4,16 +4,41 @@ import hashlib
 import json
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 
 BASE_URL = "http://127.0.0.1:8765"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_PATH = PROJECT_ROOT.parent / "data.txt"
+SCHEMA_PATH = PROJECT_ROOT / "schema" / "data_txt_schema.json"
+FIXTURE_PATH = PROJECT_ROOT / "tests" / "fixtures" / "sample_data.txt"
 
 
 def get(path: str) -> tuple[bytes, str, int]:
     with urllib.request.urlopen(f"{BASE_URL}{path}", timeout=10) as response:
         return response.read(), response.headers.get_content_type(), response.status
+
+
+def post(path: str, body: bytes, content_type: str) -> tuple[bytes, str, int]:
+    request = urllib.request.Request(
+        f"{BASE_URL}{path}",
+        data=body,
+        method="POST",
+        headers={"Content-Type": content_type},
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return response.read(), response.headers.get_content_type(), response.status
+
+
+def import_data_txt(raw: bytes) -> tuple[dict[str, Any], int]:
+    body, content_type, status = post("/api/import-data-txt", raw, "text/plain")
+    assert content_type == "application/json"
+    return json.loads(body), status
+
+
+def export_tables(tables: dict[str, list[dict[str, str]]]) -> tuple[bytes, str, int]:
+    payload = json.dumps({"tables": tables}, ensure_ascii=False).encode("utf-8")
+    return post("/api/export", payload, "application/json; charset=utf-8")
 
 
 index_bytes, index_type, index_status = get("/")
@@ -27,27 +52,52 @@ app_source = app_bytes.decode("utf-8")
 styles = styles_bytes.decode("utf-8")
 codebook = json.loads(codebook_bytes)
 bootstrap = json.loads(bootstrap_bytes)
+schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
-payload = json.dumps({"tables": bootstrap["tables"]}, ensure_ascii=False).encode("utf-8")
-request = urllib.request.Request(
-    f"{BASE_URL}/api/export",
-    data=payload,
-    method="POST",
-    headers={"Content-Type": "application/json; charset=utf-8"},
+fixture = FIXTURE_PATH.read_bytes()
+fixture_import, fixture_import_status = import_data_txt(fixture)
+fixture_export, fixture_export_type, fixture_export_status = export_tables(
+    fixture_import["tables"]
 )
-with urllib.request.urlopen(request, timeout=30) as response:
-    exported = response.read()
-    export_status = response.status
-    export_type = response.headers.get_content_type()
+assert fixture_import_status == fixture_export_status == 200
+assert fixture_export == fixture
 
-original = DATA_PATH.read_bytes()
 field_count = sum(len(fields) for fields in bootstrap["fieldOrder"].values())
+real_roundtrip: bool | None = None
+bootstrap_matches_real: bool | None = None
+if DATA_PATH.exists():
+    assert bootstrap["sampleLoaded"] is True
+    original = DATA_PATH.read_bytes()
+    real_import, real_import_status = import_data_txt(original)
+    real_export, _real_export_type, real_export_status = export_tables(real_import["tables"])
+    bootstrap_export, _bootstrap_export_type, bootstrap_export_status = export_tables(
+        bootstrap["tables"]
+    )
+    assert real_import_status == real_export_status == bootstrap_export_status == 200
+    real_roundtrip = real_export == original
+    bootstrap_matches_real = (
+        bootstrap["tables"] == real_import["tables"] and bootstrap_export == original
+    )
+    assert real_roundtrip and bootstrap_matches_real
+else:
+    assert bootstrap["sampleLoaded"] is False
+    assert set(bootstrap["tables"]) == set(schema["tableOrder"])
+    assert all(bootstrap["tables"][table] == [] for table in schema["tableOrder"])
+    print("略過根目錄真實 data.txt roundtrip：檔案不存在。")
+
 report = {
     "index": [index_status, index_type],
     "app": [app_status, app_type],
     "styles": [styles_status, styles_type],
     "codebook": [codebook_status, codebook_type, codebook["version"]],
-    "bootstrap": [bootstrap_status, bootstrap_type, len(bootstrap["tableOrder"]), field_count],
+    "bootstrap": [
+        bootstrap_status,
+        bootstrap_type,
+        len(bootstrap["tableOrder"]),
+        field_count,
+        bootstrap["schemaVersion"],
+        bootstrap["sampleLoaded"],
+    ],
     "hasBulkButton": "批次表格" in index,
     "hasSampleButton": "下載範例 CSV／XML" in index,
     "hasSearchablePicker": "optionPickerDialog" in index and "optionPickerSearch" in index,
@@ -68,14 +118,14 @@ report = {
     "legacyDatalistRemoved": "<datalist" not in app_source,
     "legacyCodes": codebook["source"]["bldcodeRows"],
     "officialSections": len(codebook["officialSections"]),
-    "export": [export_status, export_type, len(exported)],
-    "originalBytes": len(original),
-    "exactRoundtrip": original == exported,
-    "originalSha256": hashlib.sha256(original).hexdigest(),
-    "exportSha256": hashlib.sha256(exported).hexdigest(),
+    "fixtureExport": [fixture_export_status, fixture_export_type, len(fixture_export)],
+    "fixtureExactRoundtrip": fixture_export == fixture,
+    "fixtureSha256": hashlib.sha256(fixture).hexdigest(),
+    "realRoundtrip": real_roundtrip,
+    "bootstrapMatchesReal": bootstrap_matches_real,
 }
 
-assert index_status == app_status == styles_status == codebook_status == bootstrap_status == export_status == 200
+assert index_status == app_status == styles_status == codebook_status == bootstrap_status == 200
 assert report["hasBulkButton"] and report["hasSampleButton"]
 assert report["hasSearchablePicker"] and report["hasParcelCopyButton"] and report["hasStairCopyButton"]
 assert report["hasRecentPicker"] and report["shortOptionsUseNativeSelect"] and report["hasCompactActions"] and report["hasCollapsibleSections"] and report["rawFieldNamesOptIn"]
@@ -85,6 +135,11 @@ assert report["compactBulkColumns"]
 assert report["pickerHasFixedHeight"] and report["legacyDatalistRemoved"]
 assert codebook["source"]["bldcodeRows"] == 22383
 assert len(codebook["officialSections"]) == 1626
+assert bootstrap["schemaVersion"] == schema["schemaVersion"]
+assert bootstrap["tableOrder"] == schema["tableOrder"]
+assert bootstrap["fieldOrder"] == schema["fieldOrder"]
+assert bootstrap["tableMeta"] == schema["tableMeta"]
+assert isinstance(bootstrap["sampleLoaded"], bool)
 assert len(bootstrap["tableOrder"]) == 13 and field_count == 596
 copy_pairs = {
     "BMSLAN": [
@@ -104,6 +159,5 @@ copy_pairs = {
 for table, pairs in copy_pairs.items():
     fields = set(bootstrap["fieldOrder"][table])
     assert all(source in fields and target in fields for source, target in pairs)
-assert original == exported
 
 print(json.dumps(report, ensure_ascii=False, indent=2))

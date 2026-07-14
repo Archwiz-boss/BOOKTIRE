@@ -39,6 +39,9 @@ const styles = fs.readFileSync(stylesPath, "utf8");
 app.state.codebook = codebook;
 app.state.tables = { BMSBASE: [{ BMPAS: "I80" }] };
 
+assert.equal(app.state.schemaVersion, null);
+assert(source.includes("state.schemaVersion = data.schemaVersion"));
+assert(source.includes("未載入案件，可載入 data.txt 或建立新空白案件"));
 assert.equal(codebook.version, 2);
 assert.equal(codebook.source.bldcodeRows, 22383);
 assert.equal(codebook.officialSections.length, 1626);

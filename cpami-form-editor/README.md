@@ -1,6 +1,6 @@
 ﻿# CPAMI 二維書表資料編輯器
 
-這是不依賴雲端服務的前端。它以原始 `../data.txt` 當作 13 表、596 欄及欄位順序模板；瀏覽器負責編輯與來源資料對接，Python 服務負責嚴格解析並輸出 CP950／Big5。
+這是不依賴雲端服務的前端。13 表、596 欄及欄位順序由不含案件內容的 `schema/data_txt_schema.json` 定義；瀏覽器負責編輯與來源資料對接，Python 服務負責嚴格解析並輸出 CP950／Big5。
 
 ## 啟動
 
@@ -20,6 +20,16 @@ python -X utf8 .\server.py --host 0.0.0.0 --port 8765
 ```
 
 本機開啟 <http://127.0.0.1:8765>。停止服務請在執行中的終端按 `Ctrl+C`。
+
+根目錄的 `../data.txt` 是可選的初始案件。檔案存在時會載入供編輯；不存在時服務仍可正常啟動，畫面會進入空案件模式，可載入另一份 `data.txt` 或建立新空白案件。
+
+`schema/data_txt_schema.json` 是匯入、驗證及匯出的唯一結構依據，應提交版控且不得放入任何案件值。需要依相容的 `data.txt` 重新抽取結構時，在本目錄執行：
+
+```powershell
+python -X utf8 .\tools\extract_schema.py
+```
+
+也可用 `--source C:\path\to\data.txt` 指定來源。服務啟動時若找不到 schema，會直接報錯，避免用不明欄序匯出資料。
 
 ## 區域網路／外網連線
 
@@ -118,6 +128,7 @@ Access MDB 使用 32 位元 Jet Provider，請以 32 位元 Windows PowerShell �
 ```powershell
 node --check .\web\app.js
 node .\tests\frontend_smoke_test.js
+python -X utf8 .\tests\server_roundtrip_test.py
 ```
 
 ## 注意

@@ -26,6 +26,7 @@ from urllib.parse import parse_qs, urlparse
 
 APP_ROOT = Path(__file__).resolve().parent
 WEB_ROOT = APP_ROOT / "web"
+SCHEMA_PATH = APP_ROOT / "schema" / "data_txt_schema.json"
 SAMPLE_PATH = APP_ROOT.parent / "data.txt"
 MAX_BODY = 24 * 1024 * 1024
 
@@ -196,21 +197,66 @@ def parse_data_txt_bytes(raw: bytes) -> dict[str, Any]:
     }
 
 
-def load_template() -> dict[str, Any]:
-    if not SAMPLE_PATH.exists():
-        raise RuntimeError(f"找不到格式模板：{SAMPLE_PATH}")
-    parsed = parse_data_txt_bytes(SAMPLE_PATH.read_bytes())
-    parsed["tableMeta"] = {
-        table: {
-            "label": TABLE_LABELS.get(table, table),
-            "repeatable": table in REPEATABLE_TABLES,
-        }
-        for table in parsed["tableOrder"]
-    }
-    return parsed
+def load_schema() -> dict[str, Any]:
+    if not SCHEMA_PATH.exists():
+        raise RuntimeError(f"找不到格式結構：{SCHEMA_PATH}")
+    try:
+        schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"無法讀取格式結構：{SCHEMA_PATH}") from exc
+
+    table_order = schema.get("tableOrder")
+    field_order = schema.get("fieldOrder")
+    table_meta = schema.get("tableMeta")
+    schema_version = schema.get("schemaVersion")
+    if (
+        not isinstance(schema_version, str)
+        or not schema_version
+        or not isinstance(table_order, list)
+        or not table_order
+        or not all(isinstance(table, str) and table for table in table_order)
+        or not isinstance(field_order, dict)
+        or not isinstance(table_meta, dict)
+    ):
+        raise RuntimeError(f"格式結構缺少必要欄位：{SCHEMA_PATH}")
+    for table in table_order:
+        fields = field_order.get(table)
+        meta = table_meta.get(table)
+        if (
+            not isinstance(fields, list)
+            or not fields
+            or not all(isinstance(field, str) and field for field in fields)
+            or not isinstance(meta, dict)
+            or not isinstance(meta.get("label"), str)
+            or not isinstance(meta.get("repeatable"), bool)
+        ):
+            raise RuntimeError(f"格式結構中的 {table} 定義無效：{SCHEMA_PATH}")
+    return schema
 
 
-TEMPLATE = load_template()
+def assert_parsed_matches_schema(parsed: dict[str, Any], schema: dict[str, Any]) -> None:
+    expected = schema["tableOrder"]
+    if parsed["tableOrder"] != expected:
+        raise DataTxtError(
+            "資料表順序／集合與格式結構不同；需要 13 表：" + ", ".join(expected)
+        )
+    for table in expected:
+        if parsed["fieldOrder"].get(table) != schema["fieldOrder"][table]:
+            raise DataTxtError(f"{table} 欄位集合或順序與格式結構不一致。")
+
+
+def load_initial_tables(schema: dict[str, Any]) -> tuple[dict[str, list[dict[str, str]]], bool]:
+    try:
+        raw = SAMPLE_PATH.read_bytes()
+    except OSError:
+        return {table: [] for table in schema["tableOrder"]}, False
+    parsed = parse_data_txt_bytes(raw)
+    assert_parsed_matches_schema(parsed, schema)
+    return parsed["tables"], True
+
+
+SCHEMA = load_schema()
+INITIAL_TABLES, SAMPLE_LOADED = load_initial_tables(SCHEMA)
 
 
 def roc_now() -> tuple[str, str]:
@@ -235,7 +281,7 @@ def prepare_payload(payload: dict[str, Any], *, fill_defaults: bool) -> dict[str
     if fill_defaults and not key:
         key = generated_key
 
-    for table in TEMPLATE["tableOrder"]:
+    for table in SCHEMA["tableOrder"]:
         rows = incoming.get(table, [])
         if rows is None:
             rows = []
@@ -246,7 +292,7 @@ def prepare_payload(payload: dict[str, Any], *, fill_defaults: bool) -> dict[str
             if not isinstance(row, dict):
                 raise DataTxtError(f"{table} 第 {row_index} 筆不是物件。")
             canonical: dict[str, str] = {}
-            for field in TEMPLATE["fieldOrder"][table]:
+            for field in SCHEMA["fieldOrder"][table]:
                 raw_value = row.get(field, "")
                 value = "" if raw_value is None else str(raw_value)
                 if '"' in value or "\r" in value or "\n" in value:
@@ -286,7 +332,8 @@ def validate_tables(tables: dict[str, list[dict[str, str]]]) -> dict[str, Any]:
                 errors.append(f"BMSBASE.{field}（{label}）不可空白。")
 
     expected_key = base_rows[0].get("INDEX_KEY", "") if base_rows else ""
-    for table, rows in tables.items():
+    for table in SCHEMA["tableOrder"]:
+        rows = tables.get(table, [])
         seen_seq: set[str] = set()
         for row_index, row in enumerate(rows, start=1):
             prefix = f"{table} 第 {row_index} 筆"
@@ -295,7 +342,7 @@ def validate_tables(tables: dict[str, list[dict[str, str]]]) -> dict[str, Any]:
             sequence = row.get(
                 "person_seq", row.get("Person_seq", row.get("PERSON_SEQ", ""))
             ).strip()
-            if table in REPEATABLE_TABLES:
+            if SCHEMA["tableMeta"][table]["repeatable"]:
                 if not sequence:
                     warnings.append(f"{prefix} 缺少 PERSON_SEQ；匯出時會依列序補值。")
                 elif sequence in seen_seq:
@@ -326,7 +373,7 @@ def validate_tables(tables: dict[str, list[dict[str, str]]]) -> dict[str, Any]:
                 if row.get(code_field, "").strip() and not row.get(desc_field, "").strip():
                     warnings.append(f"{prefix} 已填 {code_field}，但 {desc_field} 空白；報表可能沒有顯示文字。")
 
-    counts = {table: len(rows) for table, rows in tables.items()}
+    counts = {table: len(tables.get(table, [])) for table in SCHEMA["tableOrder"]}
     return {
         "ok": not errors,
         "errors": errors,
@@ -337,11 +384,11 @@ def validate_tables(tables: dict[str, list[dict[str, str]]]) -> dict[str, Any]:
 
 def serialize_tables(tables: dict[str, list[dict[str, str]]]) -> bytes:
     lines: list[str] = []
-    for table in TEMPLATE["tableOrder"]:
+    for table in SCHEMA["tableOrder"]:
         lines.append(f"@TableName {table}")
         for row in tables.get(table, []):
             lines.append("@RecordBegin")
-            for field in TEMPLATE["fieldOrder"][table]:
+            for field in SCHEMA["fieldOrder"][table]:
                 lines.append(f'@d {field} "{row.get(field, "")}"')
             lines.append("@RecordEnd")
     text = "\r\n".join(lines) + "\r\n"
@@ -441,7 +488,14 @@ class Handler(SimpleHTTPRequestHandler):
             return
         path = urlparse(self.path).path
         if path == "/api/bootstrap":
-            data = copy.deepcopy(TEMPLATE)
+            data = {
+                "schemaVersion": SCHEMA["schemaVersion"],
+                "tableOrder": copy.deepcopy(SCHEMA["tableOrder"]),
+                "fieldOrder": copy.deepcopy(SCHEMA["fieldOrder"]),
+                "tableMeta": copy.deepcopy(SCHEMA["tableMeta"]),
+                "tables": copy.deepcopy(INITIAL_TABLES),
+                "sampleLoaded": SAMPLE_LOADED,
+            }
             self.send_json(data)
             return
         if path == "/api/health":
@@ -456,14 +510,7 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             if path == "/api/import-data-txt":
                 parsed = parse_data_txt_bytes(self.read_body())
-                expected = TEMPLATE["tableOrder"]
-                if parsed["tableOrder"] != expected:
-                    raise DataTxtError(
-                        "資料表順序／集合與模板不同；需要 13 表：" + ", ".join(expected)
-                    )
-                for table in expected:
-                    if parsed["fieldOrder"].get(table) != TEMPLATE["fieldOrder"][table]:
-                        raise DataTxtError(f"{table} 欄位集合或順序與模板不一致。")
+                assert_parsed_matches_schema(parsed, SCHEMA)
                 prepared = prepare_payload({"tables": parsed["tables"]}, fill_defaults=False)
                 self.send_json({"tables": prepared, "validation": validate_tables(prepared)})
                 return
@@ -541,7 +588,11 @@ def main() -> None:
         else:
             print(f"  http://本機區域網路IP:{args.port}/?token={server.access_token}")  # type: ignore[attr-defined]
         print("請勿把不含權杖的服務直接暴露到公網。")
-    print(f"格式模板：{SAMPLE_PATH}")
+    print(f"格式結構：{SCHEMA_PATH}")
+    if SAMPLE_LOADED:
+        print(f"初始案件：{SAMPLE_PATH}")
+    else:
+        print("初始案件：未載入（空案件模式）")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

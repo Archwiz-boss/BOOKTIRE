@@ -2,6 +2,7 @@
 
 > 分析標的：`data.txt`、`cpami/Arch2016C/ARCH2016.exe`、`Build.mdb`、`bldcode.mdb`、`land.mdb`、`fsrp/*.fr3`。
 > 本文件以 UTF-8（含 BOM）儲存；原始 `data.txt` 必須維持 Big5/CP950 才能供舊系統匯入。
+> 隱私說明：文件中的案件鍵、姓名、識別號、地址、電話、執照及案件名稱範例均已改為虛構值，不代表原始案件內容。
 
 ## 結論先行
 

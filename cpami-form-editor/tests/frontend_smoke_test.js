@@ -10,6 +10,8 @@ const appPath = path.join(projectRoot, "web", "app.js");
 const codebookPath = path.join(projectRoot, "web", "codebook.json");
 const indexPath = path.join(projectRoot, "web", "index.html");
 const stylesPath = path.join(projectRoot, "web", "styles.css");
+const schemaPath = path.join(projectRoot, "schema", "data_txt_schema.json");
+const extensionSchemaPath = path.join(projectRoot, "schema", "case_extension_schema.json");
 
 let source = fs.readFileSync(appPath, "utf8");
 source = source.slice(0, source.indexOf('$("#loadDataButton")'));
@@ -18,7 +20,9 @@ source += `\nglobalThis.__test = {
   buildSampleCsv, buildSampleXml, parseDelimited, guessTarget, codeSpecFor, CODE_OPTIONS,
   COPY_CURRENT_TO_OLD, copyMappedValues, sortOptionsByName, leadingChineseNumber,
   fieldDefinition, renderField, renderBulkControl, bulkColumnClass, sectionStartsOpen,
-  useModalForOptions, renderInlineOptionMarkup, clearTableData, isDialogBackdropClick
+  useModalForOptions, renderInlineOptionMarkup, clearTableData, isDialogBackdropClick,
+  fieldOrderFor, tableMetaFor, standardTablesPayload, extraTablesPayload, mergeCaseTables,
+  hasExtraData, caseEnvelope, visibleSections, visibleFields
 };`;
 
 const context = {
@@ -36,15 +40,27 @@ const app = context.__test;
 const codebook = JSON.parse(fs.readFileSync(codebookPath, "utf8"));
 const index = fs.readFileSync(indexPath, "utf8");
 const styles = fs.readFileSync(stylesPath, "utf8");
+const schema = JSON.parse(fs.readFileSync(schemaPath, "utf8"));
+const extensionSchema = JSON.parse(fs.readFileSync(extensionSchemaPath, "utf8"));
 app.state.codebook = codebook;
 app.state.tables = { BMSBASE: [{ BMPAS: "I80" }] };
 
 assert.equal(app.state.schemaVersion, null);
 assert.equal(app.state.formSet, "A");
 assert.deepEqual(Object.keys(app.FORM_SETS), ["A", "B", "C", "D"]);
-assert.deepEqual(Array.from(app.FORM_SETS.A.tables), Object.keys(app.TABLE_CONFIG), "A form-set tables must match TABLE_CONFIG keys and order");
-for (const formSet of ["B", "C", "D"]) assert.equal(app.FORM_SETS[formSet].tables.length, 0, `${formSet} editing groups must stay empty until later prompts`);
+assert.deepEqual(Array.from(app.FORM_SETS.A.tables), ["BMSBASE", "BMSLAN", "BMSLANOWNER", "BMSMEMO", "BMSP01", "BMSP02", "BMSP03", "BMSP04", "BMSPARK", "BMSSTAIR", "BMSWORK"]);
+assert.deepEqual(Array.from(app.FORM_SETS.B.tables), ["BMSBASE", "BMSLAN", "BMSMEMO", "BMSP01", "BMSP03", "BMSP04", "BMSSC", "BMSSCRP", "BMSROAD", "BMSCHK", "RPTPHOTO", "BM_TEC"]);
+for (const formSet of ["C", "D"]) assert.equal(app.FORM_SETS[formSet].tables.length, 0, `${formSet} editing groups remain for Prompt 7`);
+assert.equal(new Set([...app.FORM_SETS.A.tables, ...app.FORM_SETS.B.tables]).size, Object.keys(app.TABLE_CONFIG).length);
 assert.strictEqual(app.activeTables(), app.state.tables, "activeTables must expose the current case tables");
+
+app.state.formSet = "A";
+assert(!app.visibleSections("BMSBASE").some(({ section }) => section.formSets?.includes("B")), "B-only BMSBASE sections must stay hidden in A");
+const aBaseFieldCount = app.visibleFields("BMSBASE").length;
+app.state.formSet = "B";
+assert(app.visibleSections("BMSBASE").some(({ section }) => section.formSets?.includes("B")), "B-only BMSBASE sections must be visible in B");
+assert(app.visibleFields("BMSBASE").length > aBaseFieldCount, "B should add fields without changing the A field set");
+app.state.formSet = "A";
 assert(source.includes("state.schemaVersion = data.schemaVersion"));
 assert(source.includes("未載入案件，可載入 data.txt 或建立新空白案件"));
 assert.equal(
@@ -52,7 +68,10 @@ assert.equal(
   2,
   "Validate and export must both send the versioned case envelope",
 );
-assert(source.includes("formSet: state.formSet") && source.includes("tables: activeTables()"), "The case envelope must use the active form set and tables");
+assert(source.includes("formSet: state.formSet") && source.includes("tables: standardTablesPayload()") && source.includes("extraTables: extraTablesPayload()"), "The case envelope must separate data.txt and extension tables");
+assert.equal(schema.schemaVersion, extensionSchema.schemaVersion);
+assert.equal(extensionSchema.extraTableOrder.length, 4);
+assert.equal(Object.values(extensionSchema.extraFieldOrder).reduce((sum, fields) => sum + fields.length, 0), 79);
 assert.equal(codebook.version, 2);
 assert.equal(codebook.source.bldcodeRows, 22383);
 assert.equal(codebook.officialSections.length, 1626);
@@ -146,16 +165,42 @@ assert(bulkSpokesmanMarkup.includes('<select class="compact-option-select"'), "B
 assert(!bulkSpokesmanMarkup.includes("data-open-bulk-picker"));
 assert(app.renderInlineOptionMarkup([["A", "甲"]], "legacy").includes("目前值：legacy"), "Unknown existing values must remain selectable and exportable");
 
+const expectedEditableCounts = { BM_TEC: 16, BMSSC: 52, BMSROAD: 11, BMSCHK: 29, BMSSCRP: 12, RPTPHOTO: 4 };
+for (const [table, count] of Object.entries(expectedEditableCounts)) {
+  assert.equal(app.allFields(table).length, count, `${table} editable field count`);
+}
+const standardFields = schema.fieldOrder;
+const extraFields = extensionSchema.extraFieldOrder;
+for (const table of Object.keys(app.TABLE_CONFIG)) {
+  const contract = standardFields[table] || extraFields[table];
+  assert(contract, `${table} must exist in the data.txt or case-extension schema`);
+  const configured = app.allFields(table).map((field) => field.name);
+  assert.equal(new Set(configured).size, configured.length, `${table} UI fields must not repeat`);
+  assert.equal(configured.filter((field) => !contract.includes(field)).length, 0, `${table} UI fields must use exact schema casing`);
+}
+const attachmentMarkup = app.renderField(app.fieldDefinition("RPTPHOTO", "barcode"), { barcode: "YWJj", FILE_NAME: "example.jpg", FILE_SIZE: "3" }, "RPTPHOTO");
+assert(attachmentMarkup.includes("data-attachment-input") && attachmentMarkup.includes("可多選"));
+
 const savedBootstrap = app.state.bootstrap;
 const savedTables = app.state.tables;
 app.state.bootstrap = {
+  tableOrder: ["BMSBASE", "BMSLAN"],
   tableMeta: { BMSBASE: { repeatable: false }, BMSLAN: { repeatable: true } },
   fieldOrder: { BMSBASE: ["INDEX_KEY", "LICENSE"], BMSLAN: ["INDEX_KEY", "ROAD_NO1"] },
+  extraTableOrder: ["BMSROAD"],
+  extraTableMeta: { BMSROAD: { repeatable: true } },
+  extraFieldOrder: { BMSROAD: ["INDEX_KEY", "person_seq", "ROAD_SEC"] },
 };
 app.state.tables = {
   BMSBASE: [{ INDEX_KEY: "115071400001", LICENSE: "中市建字第 1 號" }],
   BMSLAN: [{ INDEX_KEY: "115071400001", ROAD_NO1: "100" }, { INDEX_KEY: "115071400001", ROAD_NO1: "200" }],
+  BMSROAD: [{ INDEX_KEY: "115071400001", person_seq: "1", ROAD_SEC: "範例路" }],
 };
+const splitEnvelope = app.caseEnvelope();
+assert.deepEqual(Object.keys(splitEnvelope.tables), ["BMSBASE", "BMSLAN"]);
+assert.deepEqual(Object.keys(splitEnvelope.extraTables), ["BMSROAD"]);
+assert.equal(splitEnvelope.extraTables.BMSROAD[0].ROAD_SEC, "範例路");
+assert.equal(app.hasExtraData(), true);
 assert.equal(app.clearTableData("BMSLAN").length, 0, "Clearing a repeatable page should remove all rows from that page only");
 assert.equal(app.state.tables.BMSBASE[0].LICENSE, "中市建字第 1 號", "Clearing one page must not alter another page");
 const clearedBaseRows = app.clearTableData("BMSBASE");
@@ -177,7 +222,8 @@ assert.equal(app.sectionStartsOpen("BMSLAN", app.TABLE_CONFIG.BMSLAN.sections[ol
 assert(index.includes('id="actionMenu"'), "Secondary file actions should be grouped into a compact menu");
 assert(index.includes('id="formSetSwitcher"'), "The sidebar should contain the form-set segmented control");
 assert(index.includes('id="formSetPlaceholder"') && index.includes('id="formSetCatalogBody"'), "Unavailable form sets should use the catalog placeholder page");
-assert(index.includes("此書表組尚未開放編輯。") && index.includes("資料仍完整保留於 data.txt，匯出不受影響。"));
+assert(index.includes("此書表組尚未開放編輯。") && index.includes("data.txt 仍會完整輸出 13 表"));
+assert(index.includes('id="loadCaseJsonButton"') && index.includes('id="exportCaseJsonButton"') && index.includes('id="caseJsonFileInput"'));
 assert(index.includes('id="toggleSectionsButton"'), "Form sections should support one-click collapse/expand");
 assert(index.includes('id="toggleRawFieldsButton"'), "Raw field names should be opt-in");
 assert(index.includes('id="optionPickerRecent"'), "The option picker should expose recent selections");

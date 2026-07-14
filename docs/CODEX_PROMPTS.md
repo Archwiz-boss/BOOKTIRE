@@ -14,7 +14,7 @@
 | ☑ 3 | 前端 caseStore 收口與 FORM_SETS 骨架 | 2026-07-14 |
 | ☑ 4 | PostgreSQL DDL 與匯入匯出工具 | 2026-07-14 |
 | ☑ 5 | 側邊欄書表組切換 UI | 2026-07-14 |
-| ☐ 6 | B 系列（施工管理）研究與實作 | |
+| ☑ 6 | B 系列（施工管理）研究與實作 | 2026-07-14 |
 | ☐ 7 | C／D 系列（使用管理、拆除）研究與實作 | |
 
 環境備註（每個 Prompt 都適用）：Windows 11、PowerShell；Python 以 `python -X utf8` 執行；Node.js 可用；工作目錄為 repo 根目錄 `BOOKTIRE/`。

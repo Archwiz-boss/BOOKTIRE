@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import re
 from datetime import datetime
@@ -104,6 +106,27 @@ FIELD_RE = re.compile(r'^@(d|m)\s+(\S+)\s+"(.*)"$')
 TABLE_RE = re.compile(r"^@TableName\s+(\S+)$")
 ROC_DATE_RE = re.compile(r"^\d{7}$")
 NUMBER_RE = re.compile(r"^-?(?:\d+(?:\.\d*)?|\.\d+)$")
+POSITIVE_INTEGER_RE = re.compile(r"^[1-9]\d*$")
+
+EXTRA_NUMERIC_FIELDS = {
+    "BMSROAD": {"person_seq", "LENGTH", "WIDE"},
+    "BMSCHK": {"PERSON_SEQ", "NET_SEQ"},
+    "BMSSCRP": {
+        "PERSON_SEQ",
+        "PAGE_NO",
+        "ITEM01",
+        "ITEM02",
+        "ITEM03",
+        "ITEM04",
+        "ITEM05",
+        "ITEM06",
+        "ITEM07",
+        "ITEM08",
+        "PEO_TECH_DATE",
+        "PEO_PLAIN_DATE",
+    },
+    "RPTPHOTO": {"PERSON_SEQ", "FILE_SIZE"},
+}
 
 
 class DataTxtError(ValueError):
@@ -211,6 +234,51 @@ def load_schema(path: str | Path) -> dict[str, Any]:
             or not isinstance(meta.get("repeatable"), bool)
         ):
             raise RuntimeError(f"格式結構中的 {table} 定義無效：{schema_path}")
+
+    extension_path = schema_path.with_name("case_extension_schema.json")
+    if extension_path.exists():
+        try:
+            extension = json.loads(extension_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"無法讀取案件擴充結構：{extension_path}") from exc
+        if extension.get("schemaVersion") != schema_version:
+            raise RuntimeError(
+                f"案件擴充結構版本不相符：{extension.get('schemaVersion')} != {schema_version}"
+            )
+        extra_order = extension.get("extraTableOrder")
+        extra_fields = extension.get("extraFieldOrder")
+        extra_meta = extension.get("extraTableMeta")
+        if (
+            not isinstance(extra_order, list)
+            or not all(isinstance(table, str) and table for table in extra_order)
+            or not isinstance(extra_fields, dict)
+            or not isinstance(extra_meta, dict)
+        ):
+            raise RuntimeError(f"案件擴充結構缺少必要欄位：{extension_path}")
+        for table in extra_order:
+            fields = extra_fields.get(table)
+            meta = extra_meta.get(table)
+            if (
+                not isinstance(fields, list)
+                or not fields
+                or len(fields) != len(set(fields))
+                or not all(isinstance(field, str) and field for field in fields)
+                or not isinstance(meta, dict)
+                or not isinstance(meta.get("label"), str)
+                or not isinstance(meta.get("repeatable"), bool)
+            ):
+                raise RuntimeError(f"案件擴充結構中的 {table} 定義無效：{extension_path}")
+        schema.update(
+            {
+                "extraTableOrder": extra_order,
+                "extraFieldOrder": extra_fields,
+                "extraTableMeta": extra_meta,
+            }
+        )
+    else:
+        schema.update(
+            {"extraTableOrder": [], "extraFieldOrder": {}, "extraTableMeta": {}}
+        )
     return schema
 
 
@@ -225,7 +293,9 @@ def assert_parsed_matches_schema(parsed: dict[str, Any], schema: dict[str, Any])
             raise DataTxtError(f"{table} 欄位集合或順序與格式結構不一致。")
 
 
-def parse_envelope(payload_dict: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
+def parse_case_envelope(
+    payload_dict: dict[str, Any], schema: dict[str, Any]
+) -> dict[str, Any]:
     if not isinstance(payload_dict, dict) or not isinstance(payload_dict.get("tables"), dict):
         raise DataTxtError("JSON 必須包含 tables 物件。")
 
@@ -238,7 +308,22 @@ def parse_envelope(payload_dict: dict[str, Any], schema: dict[str, Any]) -> dict
     form_set = payload_dict.get("formSet", "A")
     if not isinstance(form_set, str) or not form_set:
         raise DataTxtError("formSet 必須是非空字串。")
-    return payload_dict["tables"]
+    extra_tables = payload_dict.get("extraTables", {})
+    if extra_tables is None:
+        extra_tables = {}
+    if not isinstance(extra_tables, dict):
+        raise DataTxtError("extraTables 必須是物件。")
+    return {
+        "schemaVersion": expected_version,
+        "formSet": form_set,
+        "tables": payload_dict["tables"],
+        "extraTables": extra_tables,
+    }
+
+
+def parse_envelope(payload_dict: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
+    """Parse either legacy or versioned input and return the 13 data.txt tables."""
+    return parse_case_envelope(payload_dict, schema)["tables"]
 
 
 def roc_now() -> tuple[str, str]:
@@ -254,6 +339,7 @@ def prepare_payload(
     schema: dict[str, Any],
     *,
     fill_defaults: bool,
+    allow_data_txt_unsafe: bool = False,
 ) -> dict[str, list[dict[str, str]]]:
     if not isinstance(payload, dict) or not isinstance(payload.get("tables"), dict):
         raise DataTxtError("JSON 必須包含 tables 物件。")
@@ -274,6 +360,12 @@ def prepare_payload(
             rows = []
         if not isinstance(rows, list):
             raise DataTxtError(f"{table} 必須是記錄陣列。")
+        # The legacy format stores field names inside each record.  A table
+        # without a record therefore cannot carry its field contract.  Export
+        # one blank canonical record so every data.txt remains a complete,
+        # re-importable 13-table / 596-field document.
+        if fill_defaults and not rows:
+            rows = [{}]
         canonical_rows: list[dict[str, str]] = []
         for row_index, row in enumerate(rows, start=1):
             if not isinstance(row, dict):
@@ -282,7 +374,7 @@ def prepare_payload(
             for field in schema["fieldOrder"][table]:
                 raw_value = row.get(field, "")
                 value = "" if raw_value is None else str(raw_value)
-                if '"' in value or "\r" in value or "\n" in value:
+                if not allow_data_txt_unsafe and ('"' in value or "\r" in value or "\n" in value):
                     raise DataTxtError(
                         f"{table} 第 {row_index} 筆 {field} 含雙引號或換行，舊格式沒有可靠跳脫規則。"
                     )
@@ -290,15 +382,85 @@ def prepare_payload(
             if fill_defaults:
                 if "INDEX_KEY" in canonical:
                     canonical["INDEX_KEY"] = key
-                if "person_seq" in canonical and not canonical["person_seq"].strip():
-                    canonical["person_seq"] = str(row_index)
-                if "PERSON_SEQ" in canonical and not canonical["PERSON_SEQ"].strip():
-                    canonical["PERSON_SEQ"] = str(row_index)
+                for sequence_field in ("person_seq", "Person_seq", "PERSON_SEQ"):
+                    if sequence_field in canonical and not canonical[sequence_field].strip():
+                        canonical[sequence_field] = str(row_index)
                 if "SPOKESMAN" in canonical and not canonical["SPOKESMAN"].strip():
                     canonical["SPOKESMAN"] = "Y" if row_index == 1 else "N"
             canonical_rows.append(canonical)
         result[table] = canonical_rows
     return result
+
+
+def prepare_extra_tables(
+    payload: dict[str, Any],
+    schema: dict[str, Any],
+    *,
+    fill_defaults: bool,
+    index_key: str = "",
+) -> dict[str, list[dict[str, str]]]:
+    incoming = payload.get("extraTables", {})
+    if incoming is None:
+        incoming = {}
+    if not isinstance(incoming, dict):
+        raise DataTxtError("extraTables 必須是物件。")
+
+    result: dict[str, list[dict[str, str]]] = {}
+    for table in schema.get("extraTableOrder", []):
+        rows = incoming.get(table, [])
+        if rows is None:
+            rows = []
+        if not isinstance(rows, list):
+            raise DataTxtError(f"{table} 必須是記錄陣列。")
+        canonical_rows: list[dict[str, str]] = []
+        for row_index, row in enumerate(rows, start=1):
+            if not isinstance(row, dict):
+                raise DataTxtError(f"{table} 第 {row_index} 筆不是物件。")
+            canonical = {
+                field: "" if row.get(field) is None else str(row.get(field, ""))
+                for field in schema["extraFieldOrder"][table]
+            }
+            if fill_defaults:
+                if "INDEX_KEY" in canonical:
+                    canonical["INDEX_KEY"] = index_key
+                for sequence_field in ("person_seq", "Person_seq", "PERSON_SEQ"):
+                    if sequence_field in canonical and not canonical[sequence_field].strip():
+                        canonical[sequence_field] = str(row_index)
+                if "SPOKESMAN" in canonical and not canonical["SPOKESMAN"].strip():
+                    canonical["SPOKESMAN"] = "Y" if row_index == 1 else "N"
+            canonical_rows.append(canonical)
+        result[table] = canonical_rows
+    return result
+
+
+def prepare_case_envelope(
+    payload: dict[str, Any],
+    schema: dict[str, Any],
+    *,
+    fill_defaults: bool,
+    allow_data_txt_unsafe: bool = False,
+) -> dict[str, Any]:
+    parsed = parse_case_envelope(payload, schema)
+    tables = prepare_payload(
+        {"tables": parsed["tables"]},
+        schema,
+        fill_defaults=fill_defaults,
+        allow_data_txt_unsafe=allow_data_txt_unsafe,
+    )
+    base_rows = tables.get("BMSBASE", [])
+    index_key = base_rows[0].get("INDEX_KEY", "") if base_rows else ""
+    extra_tables = prepare_extra_tables(
+        {"extraTables": parsed["extraTables"]},
+        schema,
+        fill_defaults=fill_defaults,
+        index_key=index_key,
+    )
+    return {
+        "schemaVersion": schema["schemaVersion"],
+        "formSet": parsed["formSet"],
+        "tables": tables,
+        "extraTables": extra_tables,
+    }
 
 
 def validate_tables(
@@ -341,6 +503,10 @@ def validate_tables(
             for field, value in row.items():
                 if not value:
                     continue
+                if '"' in value or "\r" in value or "\n" in value:
+                    errors.append(
+                        f"{prefix} {field} 含雙引號或換行，data.txt 沒有可靠跳脫規則。"
+                    )
                 upper = field.upper()
                 if (upper.endswith("_DATE") or upper in {"CR_DATE", "UP_DATE", "BIRTH_DATE"}) and not ROC_DATE_RE.fullmatch(value):
                     warnings.append(f"{prefix} {field} 建議使用民國 yyyMMdd 7 碼，目前為「{value}」。")
@@ -369,6 +535,68 @@ def validate_tables(
         "warnings": warnings,
         "counts": counts,
     }
+
+
+def validate_extra_tables(
+    extra_tables: dict[str, list[dict[str, str]]],
+    schema: dict[str, Any],
+    *,
+    index_key: str,
+) -> dict[str, Any]:
+    warnings: list[str] = []
+    counts: dict[str, int] = {}
+    for table in schema.get("extraTableOrder", []):
+        rows = extra_tables.get(table, [])
+        counts[table] = len(rows)
+        seen_sequences: set[str] = set()
+        for row_index, row in enumerate(rows, start=1):
+            prefix = f"{table} 第 {row_index} 筆"
+            if index_key and row.get("INDEX_KEY", "") != index_key:
+                warnings.append(f"{prefix} INDEX_KEY 與 BMSBASE 不一致。")
+            sequence = row.get(
+                "person_seq", row.get("Person_seq", row.get("PERSON_SEQ", ""))
+            ).strip()
+            if not sequence:
+                warnings.append(f"{prefix} 缺少 PERSON_SEQ；儲存完整案件時會依列序補值。")
+            elif not POSITIVE_INTEGER_RE.fullmatch(sequence):
+                warnings.append(f"{prefix} PERSON_SEQ 建議使用正整數，目前為「{sequence}」。")
+            elif sequence in seen_sequences:
+                warnings.append(f"{table} 的 PERSON_SEQ={sequence} 重複。")
+            seen_sequences.add(sequence)
+
+            for field in EXTRA_NUMERIC_FIELDS.get(table, set()):
+                value = row.get(field, "").strip()
+                if value and not NUMBER_RE.fullmatch(value):
+                    warnings.append(f"{prefix} {field} 建議使用純數字，目前為「{value}」。")
+
+            for field, value in row.items():
+                if not value or field in {"PEO_TECH_DATE", "PEO_PLAIN_DATE"}:
+                    continue
+                upper = field.upper()
+                if (upper.endswith("_DATE") or upper.startswith("CHK_DATE")) and not ROC_DATE_RE.fullmatch(value):
+                    warnings.append(f"{prefix} {field} 建議使用民國 yyyMMdd 7 碼，目前為「{value}」。")
+
+            if table == "BMSCHK" and row.get("CHK_Item_code", "").strip() and not row.get("CHK_Item", "").strip():
+                warnings.append(f"{prefix} 已填 CHK_Item_code，但 CHK_Item 顯示名稱空白。")
+            if table == "RPTPHOTO" and row.get("barcode", ""):
+                try:
+                    base64.b64decode(row["barcode"], validate=True)
+                except (binascii.Error, ValueError):
+                    warnings.append(f"{prefix} barcode 不是有效的 Base64 附件內容。")
+
+    return {"warnings": warnings, "counts": counts}
+
+
+def validate_case_envelope(envelope: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
+    report = validate_tables(envelope["tables"], schema)
+    base_rows = envelope["tables"].get("BMSBASE", [])
+    index_key = base_rows[0].get("INDEX_KEY", "") if base_rows else ""
+    extra_report = validate_extra_tables(
+        envelope.get("extraTables", {}), schema, index_key=index_key
+    )
+    report["warnings"].extend(extra_report["warnings"])
+    report["extraCounts"] = extra_report["counts"]
+    return report
 
 
 def serialize_tables(

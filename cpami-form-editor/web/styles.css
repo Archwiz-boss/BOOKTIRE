@@ -321,6 +321,7 @@ body.show-raw .raw-only, body.show-raw .raw-field, body.show-raw .nav-raw { disp
 .field-count { color: var(--muted); font-size: 12px; }
 .quiet-button { min-height: 32px; padding: 5px 9px; color: #415564; border: 1px solid #cbd2d7; border-radius: 6px; background: white; font-size: 12px; white-space: nowrap; }
 .quiet-button:hover { border-color: #7893a6; background: #f1f6f8; }
+.quiet-button.danger { color: var(--red); }
 #fieldGroups { padding: 2px 20px 24px; }
 .field-section { padding-top: 17px; }
 .field-section + .field-section { margin-top: 5px; border-top: 1px solid #e5e6e7; }
@@ -363,6 +364,18 @@ body.show-raw .raw-only, body.show-raw .raw-field, body.show-raw .nav-raw { disp
 }
 .field textarea { min-height: 92px; resize: vertical; line-height: 1.5; }
 .field input:focus, .field select:focus, .field textarea:focus { border-color: #36729c; box-shadow: 0 0 0 3px rgb(54 114 156 / 13%); }
+.attachment-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--paper);
+}
+.attachment-control input[hidden] { display: none; }
+.attachment-summary { flex-basis: 100%; color: var(--muted); overflow-wrap: anywhere; }
 .picker-control { display: grid; gap: 5px; }
 .field .picker-open-button, .bulk-picker-button {
   min-width: 48px;

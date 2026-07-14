@@ -21,9 +21,8 @@ from cpami_core import (  # noqa: E402
     assert_parsed_matches_schema,
     load_schema,
     parse_data_txt_bytes,
-    parse_envelope,
-    prepare_payload,
-    validate_tables,
+    prepare_case_envelope,
+    validate_case_envelope,
 )
 
 
@@ -69,37 +68,51 @@ def load_input(
     data_txt: Path | None,
     case_json: Path | None,
     schema: dict[str, Any],
-) -> tuple[dict[str, list[dict[str, str]]], str]:
+) -> tuple[dict[str, Any], str]:
     if data_txt is not None:
         parsed = parse_data_txt_bytes(data_txt.read_bytes())
         assert_parsed_matches_schema(parsed, schema)
-        tables = prepare_payload(
-            {"tables": parsed["tables"]}, schema, fill_defaults=False
+        envelope = prepare_case_envelope(
+            {
+                "schemaVersion": schema["schemaVersion"],
+                "formSet": "A",
+                "tables": parsed["tables"],
+                "extraTables": {},
+            },
+            schema,
+            fill_defaults=False,
         )
-        return tables, data_txt.name
+        return envelope, data_txt.name
 
     if case_json is None:
         raise DataTxtError("必須指定 --data-txt 或 --case-json。")
     payload = json.loads(case_json.read_text(encoding="utf-8-sig"))
-    incoming_tables = parse_envelope(payload, schema)
-    tables = prepare_payload(
-        {"tables": incoming_tables}, schema, fill_defaults=False
+    return (
+        prepare_case_envelope(
+            payload,
+            schema,
+            fill_defaults=False,
+            allow_data_txt_unsafe=True,
+        ),
+        case_json.name,
     )
-    return tables, case_json.name
 
 
 def case_parameters(
-    tables: dict[str, list[dict[str, str]]],
+    envelope: dict[str, Any],
     schema: dict[str, Any],
     *,
     form_set: str,
     status: str,
     source_file: str,
 ) -> dict[str, str]:
+    tables = envelope["tables"]
     base_rows = tables.get("BMSBASE", [])
     base = base_rows[0] if base_rows else {}
     payload = json.dumps(
-        {"tables": tables}, ensure_ascii=False, separators=(",", ":")
+        {"tables": tables, "extraTables": envelope.get("extraTables", {})},
+        ensure_ascii=False,
+        separators=(",", ":"),
     )
     return {
         "schema_version": schema["schemaVersion"],
@@ -137,6 +150,9 @@ def print_dry_run(params: dict[str, str], report: dict[str, Any]) -> None:
     counts = {
         table: len(rows) for table, rows in payload["tables"].items()
     }
+    extra_counts = {
+        table: len(rows) for table, rows in payload.get("extraTables", {}).items()
+    }
     print("DRY-RUN：不會連線或寫入 PostgreSQL。")
     print("將執行的 SQL：")
     print(UPSERT_SQL)
@@ -150,6 +166,7 @@ def print_dry_run(params: dict[str, str], report: dict[str, Any]) -> None:
         "status": params["status"],
         "source_file": mask_text(params["source_file"]),
         "payload": f"{len(counts)} 表／{sum(counts.values())} 筆記錄（內容不顯示）",
+        "extra_payload": f"{len(extra_counts)} 擴充表／{sum(extra_counts.values())} 筆記錄（內容不顯示）",
         "validation": f"{len(report['errors'])} 個錯誤／{len(report['warnings'])} 個提醒",
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
@@ -186,8 +203,8 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         schema = load_schema(SCHEMA_PATH)
-        tables, source_file = load_input(args.data_txt, args.case_json, schema)
-        report = validate_tables(tables, schema)
+        envelope, source_file = load_input(args.data_txt, args.case_json, schema)
+        report = validate_case_envelope(envelope, schema)
     except (DataTxtError, OSError, UnicodeError, json.JSONDecodeError, RuntimeError) as exc:
         print(f"匯入失敗：{exc}", file=sys.stderr)
         return 2
@@ -201,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     params = case_parameters(
-        tables,
+        envelope,
         schema,
         form_set=args.form_set.strip(),
         status=args.status.strip(),

@@ -19,12 +19,15 @@
         <summary class="button ghost">更多</summary>
         <div class="action-menu-panel">
           <button id="newCaseButton" type="button">新空白案件</button>
+          <button id="loadCaseJsonButton" type="button">載入完整案件 JSON</button>
+          <button id="exportCaseJsonButton" type="button">匯出完整案件 JSON</button>
           <button id="openSamplesButton" type="button">下載範例 CSV／XML</button>
           <button id="validateButton" type="button">檢查資料</button>
         </div>
       </details>
       <button class="button primary" id="exportButton" type="button">匯出 data.txt</button>
       <input id="dataFileInput" type="file" accept=".txt,text/plain" hidden>
+      <input id="caseJsonFileInput" type="file" accept=".json,application/json" hidden>
     </div>
   </header>
 
@@ -46,7 +49,7 @@
         <p class="eyebrow">書表目錄</p>
         <h2 id="formSetPlaceholderTitle">施工管理</h2>
         <p class="form-set-unavailable">此書表組尚未開放編輯。</p>
-        <div class="form-set-preservation">資料仍完整保留於 data.txt，匯出不受影響。</div>
+        <div class="form-set-preservation">data.txt 仍會完整輸出 13 表；額外資料由完整案件 JSON 保存。</div>
         <div class="form-catalog-scroll" role="region" aria-label="目前書表組目錄" tabindex="0">
           <table class="form-catalog-table">
             <thead><tr><th scope="col">書表編號</th><th scope="col">書表名稱</th></tr></thead>

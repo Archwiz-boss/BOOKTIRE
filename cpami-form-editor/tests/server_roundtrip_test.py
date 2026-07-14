@@ -12,6 +12,7 @@ BASE_URL = "http://127.0.0.1:8765"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_PATH = PROJECT_ROOT.parent / "data.txt"
 SCHEMA_PATH = PROJECT_ROOT / "schema" / "data_txt_schema.json"
+EXTENSION_SCHEMA_PATH = PROJECT_ROOT / "schema" / "case_extension_schema.json"
 FIXTURE_PATH = PROJECT_ROOT / "tests" / "fixtures" / "sample_data.txt"
 
 
@@ -71,6 +72,7 @@ styles = styles_bytes.decode("utf-8")
 codebook = json.loads(codebook_bytes)
 bootstrap = json.loads(bootstrap_bytes)
 schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+extension_schema = json.loads(EXTENSION_SCHEMA_PATH.read_text(encoding="utf-8"))
 
 fixture = FIXTURE_PATH.read_bytes()
 fixture_import, fixture_import_status = import_data_txt(fixture)
@@ -80,16 +82,45 @@ fixture_export, fixture_export_type, fixture_export_status = export_tables(
 assert fixture_import_status == fixture_export_status == 200
 assert fixture_export == fixture
 
+sparse_tables = {
+    table: fixture_import["tables"][table] if table == "BMSBASE" else []
+    for table in schema["tableOrder"]
+}
+sparse_export, _sparse_export_type, sparse_export_status = export_tables(sparse_tables)
+sparse_import, sparse_import_status = import_data_txt(sparse_export)
+assert sparse_export_status == sparse_import_status == 200
+assert all(len(sparse_import["tables"][table]) == 1 for table in schema["tableOrder"])
+for table in schema["tableOrder"]:
+    assert list(sparse_import["tables"][table][0]) == schema["fieldOrder"][table]
+
 legacy_validation, legacy_validation_status = post_json_response(
     "/api/validate", {"tables": fixture_import["tables"]}
 )
 envelope = {
     "schemaVersion": schema["schemaVersion"],
-    "formSet": "A",
+    "formSet": "B",
     "tables": fixture_import["tables"],
+    "extraTables": {
+        "BMSROAD": [
+            {
+                "INDEX_KEY": "1150101120000",
+                "person_seq": "1",
+                "SPOKESMAN": "Y",
+                "ROAD_SEC": "範例路",
+                "LENGTH": "20",
+                "WIDE": "8",
+            }
+        ]
+    },
 }
 envelope_validation, envelope_validation_status = post_json_response(
     "/api/validate", envelope
+)
+case_import, case_import_status = post_json_response("/api/import-case-json", envelope)
+unsafe_envelope = json.loads(json.dumps(envelope, ensure_ascii=False))
+unsafe_envelope["tables"]["BMSBASE"][0]["BUILDING_NAME"] = '範例"工程\n草稿'
+unsafe_case_import, unsafe_case_import_status = post_json_response(
+    "/api/import-case-json", unsafe_envelope
 )
 wrong_version = "1900-01-01"
 version_error, version_error_status = post_json_response(
@@ -101,6 +132,14 @@ envelope_export, _envelope_export_type, envelope_export_status = post(
 )
 assert legacy_validation_status == envelope_validation_status == 200
 assert legacy_validation["ok"] and envelope_validation["ok"]
+assert case_import_status == 200
+assert case_import["formSet"] == "B"
+assert case_import["extraTables"]["BMSROAD"][0]["ROAD_SEC"] == "範例路"
+assert unsafe_case_import_status == 200
+assert unsafe_case_import["tables"]["BMSBASE"][0]["BUILDING_NAME"] == '範例"工程\n草稿'
+assert not unsafe_case_import["validation"]["ok"]
+assert any("雙引號或換行" in error for error in unsafe_case_import["validation"]["errors"])
+assert envelope_validation["extraCounts"]["BMSROAD"] == 1
 assert version_error_status == 400
 assert wrong_version in version_error["error"]
 assert schema["schemaVersion"] in version_error["error"]
@@ -165,11 +204,21 @@ report = {
     "fixtureExport": [fixture_export_status, fixture_export_type, len(fixture_export)],
     "fixtureExactRoundtrip": fixture_export == fixture,
     "fixtureSha256": hashlib.sha256(fixture).hexdigest(),
+    "sparseCaseCompleteExport": {
+        "tables": len(sparse_import["tables"]),
+        "fields": sum(len(fields) for fields in schema["fieldOrder"].values()),
+        "allTablesHaveCanonicalRecord": all(
+            len(sparse_import["tables"][table]) == 1 for table in schema["tableOrder"]
+        ),
+    },
     "envelopeApi": {
         "legacyValidate": legacy_validation_status,
         "envelopeValidate": envelope_validation_status,
         "versionMismatch": version_error_status,
         "envelopeExportExact": envelope_export == fixture,
+        "caseJsonImport": case_import_status,
+        "unsafeDraftCaseJsonImport": unsafe_case_import_status,
+        "extraRoadRows": len(case_import["extraTables"]["BMSROAD"]),
     },
     "realRoundtrip": real_roundtrip,
     "bootstrapMatchesReal": bootstrap_matches_real,
@@ -189,6 +238,11 @@ assert bootstrap["schemaVersion"] == schema["schemaVersion"]
 assert bootstrap["tableOrder"] == schema["tableOrder"]
 assert bootstrap["fieldOrder"] == schema["fieldOrder"]
 assert bootstrap["tableMeta"] == schema["tableMeta"]
+assert bootstrap["extraTableOrder"] == extension_schema["extraTableOrder"]
+assert bootstrap["extraFieldOrder"] == extension_schema["extraFieldOrder"]
+assert bootstrap["extraTableMeta"] == extension_schema["extraTableMeta"]
+assert set(bootstrap["extraTables"]) == set(extension_schema["extraTableOrder"])
+assert all(not rows for rows in bootstrap["extraTables"].values())
 assert isinstance(bootstrap["sampleLoaded"], bool)
 assert len(bootstrap["tableOrder"]) == 13 and field_count == 596
 copy_pairs = {

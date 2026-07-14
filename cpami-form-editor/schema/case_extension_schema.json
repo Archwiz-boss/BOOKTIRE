@@ -1,0 +1,120 @@
+{
+  "schemaVersion": "2026-07-14.1",
+  "extraTableOrder": [
+    "BMSROAD",
+    "BMSCHK",
+    "BMSSCRP",
+    "RPTPHOTO"
+  ],
+  "extraFieldOrder": {
+    "BMSROAD": [
+      "INDEX_KEY",
+      "person_seq",
+      "SPOKESMAN",
+      "DIST",
+      "ROAD_SEC",
+      "ALLEY",
+      "LANE",
+      "DOOR_NO",
+      "MEMO",
+      "LENGTH",
+      "WIDE",
+      "USE_LIMITE_DAY",
+      "USE_ANSER",
+      "CR_DATE",
+      "UP_DATE",
+      "OP_USER",
+      "識別碼"
+    ],
+    "BMSCHK": [
+      "INDEX_KEY",
+      "識別碼",
+      "CHK_Item_code",
+      "CHK_Item",
+      "CHK_Reg_Number1",
+      "CHK_Date1",
+      "CHK_Over_Date1",
+      "CHK_OK1",
+      "Struct_Tech",
+      "ARCH_NAME",
+      "CHK_Reg_Number2",
+      "CHK_Date2",
+      "CHK_Over_Date2",
+      "CHK_OK2",
+      "TECH_NAME",
+      "TECH_LIC",
+      "CR_DATE",
+      "UP_DATE",
+      "OP_USER",
+      "PERSON_SEQ",
+      "NET_CHECK",
+      "NET_CR_DATE",
+      "NET_REG_DATE",
+      "NET_REG_NO",
+      "PECT_FLAG",
+      "PECT_RES_ITEM",
+      "PECT_RES",
+      "PECT_DATE",
+      "BOSS_MAN",
+      "PECT_ITEM",
+      "PECT_DESC",
+      "PECT_RVLFLAG",
+      "PECT_RVLDATE",
+      "UREMARK",
+      "NET_SEQ"
+    ],
+    "BMSSCRP": [
+      "識別碼",
+      "INDEX_KEY",
+      "PERSON_SEQ",
+      "PAGE_NO",
+      "MONTHS",
+      "ITEM01",
+      "ITEM02",
+      "ITEM03",
+      "ITEM04",
+      "ITEM05",
+      "ITEM06",
+      "ITEM07",
+      "ITEM08",
+      "CR_DATE",
+      "UP_DATE",
+      "OP_USER",
+      "PEO_TECH_DATE",
+      "PEO_PLAIN_DATE"
+    ],
+    "RPTPHOTO": [
+      "INDEX_KEY",
+      "PERSON_SEQ",
+      "FORM_CODE",
+      "FILE_NAME",
+      "MIME_TYPE",
+      "FILE_SIZE",
+      "barcode",
+      "CR_DATE",
+      "MEMO"
+    ]
+  },
+  "extraTableMeta": {
+    "BMSROAD": {
+      "label": "使用道路",
+      "repeatable": true,
+      "source": "Build.mdb"
+    },
+    "BMSCHK": {
+      "label": "施工勘驗",
+      "repeatable": true,
+      "source": "Build.mdb"
+    },
+    "BMSSCRP": {
+      "label": "逐月材料與人力",
+      "repeatable": true,
+      "source": "Build.mdb"
+    },
+    "RPTPHOTO": {
+      "label": "施工照片／附件",
+      "repeatable": true,
+      "source": "FastReport RptPhoto"
+    }
+  }
+}

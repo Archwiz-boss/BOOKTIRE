@@ -31,6 +31,30 @@ class CpamiCoreTest(unittest.TestCase):
         )
         self.assertEqual(core.serialize_tables(prepared, self.schema), self.fixture)
 
+    def test_empty_case_export_materializes_all_tables_and_fields(self) -> None:
+        empty_tables = {table: [] for table in self.schema["tableOrder"]}
+        prepared = core.prepare_payload(
+            {"tables": empty_tables}, self.schema, fill_defaults=True
+        )
+        self.assertTrue(
+            all(len(prepared[table]) == 1 for table in self.schema["tableOrder"])
+        )
+        for table in self.schema["tableOrder"]:
+            self.assertEqual(
+                list(prepared[table][0]), self.schema["fieldOrder"][table]
+            )
+            for sequence_field in ("person_seq", "Person_seq", "PERSON_SEQ"):
+                if sequence_field in prepared[table][0]:
+                    self.assertEqual(prepared[table][0][sequence_field], "1")
+
+        raw = core.serialize_tables(prepared, self.schema)
+        parsed = core.parse_data_txt_bytes(raw)
+        core.assert_parsed_matches_schema(parsed, self.schema)
+        self.assertEqual(len(parsed["tableOrder"]), 13)
+        self.assertEqual(
+            sum(len(fields) for fields in parsed["fieldOrder"].values()), 596
+        )
+
     def test_index_key_mismatch_is_an_error(self) -> None:
         tables = self.fresh_tables()
         tables["BMSLAN"][0]["INDEX_KEY"] = "1150101129999"
@@ -82,6 +106,99 @@ class CpamiCoreTest(unittest.TestCase):
             "tables": tables,
         }
         self.assertIs(core.parse_envelope(envelope, self.schema), tables)
+
+    def test_case_extension_schema_and_roundtrip_boundary(self) -> None:
+        self.assertEqual(
+            self.schema["extraTableOrder"],
+            ["BMSROAD", "BMSCHK", "BMSSCRP", "RPTPHOTO"],
+        )
+        self.assertEqual(
+            sum(len(fields) for fields in self.schema["extraFieldOrder"].values()),
+            79,
+        )
+        envelope = core.prepare_case_envelope(
+            {
+                "schemaVersion": self.schema["schemaVersion"],
+                "formSet": "B",
+                "tables": self.fresh_tables(),
+                "extraTables": {
+                    "BMSROAD": [
+                        {
+                            "INDEX_KEY": "1150101120000",
+                            "person_seq": "1",
+                            "SPOKESMAN": "Y",
+                            "ROAD_SEC": "範例路",
+                            "MEMO": "可保存引號「範例」與\n多行說明",
+                            "LENGTH": "20",
+                            "WIDE": "8",
+                        }
+                    ]
+                },
+            },
+            self.schema,
+            fill_defaults=False,
+        )
+        self.assertEqual(envelope["formSet"], "B")
+        self.assertEqual(envelope["extraTables"]["BMSROAD"][0]["ROAD_SEC"], "範例路")
+        self.assertIn("\n", envelope["extraTables"]["BMSROAD"][0]["MEMO"])
+        self.assertEqual(
+            core.serialize_tables(envelope["tables"], self.schema), self.fixture
+        )
+
+    def test_extra_table_quality_issues_are_warnings(self) -> None:
+        envelope = core.prepare_case_envelope(
+            {
+                "schemaVersion": self.schema["schemaVersion"],
+                "formSet": "B",
+                "tables": self.fresh_tables(),
+                "extraTables": {
+                    "BMSCHK": [
+                        {
+                            "INDEX_KEY": "1150101120000",
+                            "PERSON_SEQ": "1",
+                            "CHK_Item_code": "000001",
+                            "CHK_Item": "",
+                            "CHK_Date1": "明天",
+                            "NET_SEQ": "第一筆",
+                        }
+                    ],
+                    "RPTPHOTO": [
+                        {
+                            "INDEX_KEY": "1150101120000",
+                            "PERSON_SEQ": "1",
+                            "barcode": "不是Base64",
+                        }
+                    ],
+                },
+            },
+            self.schema,
+            fill_defaults=False,
+        )
+        report = core.validate_case_envelope(envelope, self.schema)
+        self.assertTrue(report["ok"])
+        self.assertTrue(any("NET_SEQ" in warning for warning in report["warnings"]))
+        self.assertTrue(any("CHK_Item" in warning for warning in report["warnings"]))
+        self.assertTrue(any("Base64" in warning for warning in report["warnings"]))
+        self.assertEqual(report["extraCounts"]["BMSCHK"], 1)
+
+    def test_case_json_can_preserve_data_txt_unsafe_draft_text(self) -> None:
+        tables = self.fresh_tables()
+        tables["BMSBASE"][0]["BUILDING_NAME"] = '範例"工程\n草稿'
+        envelope = core.prepare_case_envelope(
+            {
+                "schemaVersion": self.schema["schemaVersion"],
+                "formSet": "B",
+                "tables": tables,
+                "extraTables": {},
+            },
+            self.schema,
+            fill_defaults=False,
+            allow_data_txt_unsafe=True,
+        )
+        self.assertEqual(envelope["tables"]["BMSBASE"][0]["BUILDING_NAME"], '範例"工程\n草稿')
+        report = core.validate_case_envelope(envelope, self.schema)
+        self.assertFalse(report["ok"])
+        self.assertTrue(any("雙引號或換行" in error for error in report["errors"]))
 
     def test_form_set_defaults_to_a(self) -> None:
         tables = self.fresh_tables()

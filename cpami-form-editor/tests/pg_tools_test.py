@@ -116,8 +116,20 @@ class PgToolsOfflineTest(unittest.TestCase):
         parsed = parse_data_txt_bytes(FIXTURE_PATH.read_bytes())
         envelope = {
             "schemaVersion": schema["schemaVersion"],
-            "formSet": "A",
+            "formSet": "B",
             "tables": parsed["tables"],
+            "extraTables": {
+                "BMSROAD": [
+                    {
+                        "INDEX_KEY": "1150101120000",
+                        "person_seq": "1",
+                        "SPOKESMAN": "Y",
+                        "ROAD_SEC": "範例路",
+                        "LENGTH": "20",
+                        "WIDE": "8",
+                    }
+                ]
+            },
         }
         with tempfile.TemporaryDirectory() as temporary_directory:
             case_path = Path(temporary_directory) / "case.json"
@@ -128,8 +140,9 @@ class PgToolsOfflineTest(unittest.TestCase):
                 "pg_import.py", "--case-json", str(case_path), "--dry-run"
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('"schema_version": "2026-07-14"', result.stdout)
+        self.assertIn(f'"schema_version": "{schema["schemaVersion"]}"', result.stdout)
         self.assertIn('"payload": "13 表／18 筆記錄（內容不顯示）"', result.stdout)
+        self.assertIn('"extra_payload": "4 擴充表／1 筆記錄（內容不顯示）"', result.stdout)
 
     def test_pg_export_payload_roundtrip_without_database(self) -> None:
         schema = load_schema(SCHEMA_PATH)

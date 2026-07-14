@@ -8,6 +8,7 @@ const Y = (name, label, extra = {}) => F(name, label, { kind: "yn", ...extra });
 const M = (name, label, extra = {}) => F(name, label, { multiline: true, ...extra });
 const S = (title, fields, extra = {}) => ({ title, fields, ...extra });
 const OPTION_MODAL_THRESHOLD = 5;
+const MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024;
 
 const addressFields = (prefix, title) => [
   C(`${prefix}ADR`, `${title}行政區代碼`, { hint: "報表會依行政區代碼組出縣市／區名。" }),
@@ -24,10 +25,15 @@ const addressFields = (prefix, title) => [
   F(`${prefix}AD9`, `${title}其他地址文字`, { wide: true }),
 ];
 
+const oldAddressFields = (prefix, title) => addressFields(prefix, title).map((field) => ({
+  ...field,
+  name: `${field.name}_OLD`,
+}));
+
 const TABLE_CONFIG = {
   BMSBASE: {
     label: "案件主檔／申請書總表",
-    forms: ["A11-1", "A11-2", "A11-2-2", "A11-3", "A11-4", "A11-5", "A11-6", "A12-2", "A12-4", "A12-4-2", "A12-5", "A13-1", "A13-2", "A13-3", "A13-10", "A21-1", "A21-4", "A23-1", "A31-1", "A31-4", "A31-5", "A32-2"],
+    forms: ["A11-1", "A11-2", "A11-2-2", "A11-3", "A11-4", "A11-5", "A11-6", "A12-2", "A12-4", "A12-4-2", "A12-5", "A13-1", "A13-2", "A13-3", "A13-10", "A21-1", "A21-4", "A23-1", "A31-1", "A31-4", "A31-5", "A32-2", "B11-1", "B11-2", "B11-3", "B11-4", "B12-1", "B13-1", "B13-2", "B13-2-2", "B13-3", "B13-4", "B13-5", "B13-6", "B21-1", "B21-2", "B14-1", "B14-3", "B14-4", "B14-5"],
     notice: "BMSBASE 是全案唯一主檔。INDEX_KEY 會同步到所有子表；報表上的主管機關、工程類別、構造及用途名稱，多半由這裡的代碼組成。",
     sections: [
       S("案件識別", [
@@ -44,6 +50,16 @@ const TABLE_CONFIG = {
         N("LAW_COVER_RATE", "法定建蔽率（%）"), N("LAW_SPACE_RATE", "法定容積率（%）"),
         C("LAW_01", "建築技術規則版本代碼"), C("LAW_03", "耐震規範版本代碼"),
       ]),
+      S("施工管理與展期", [
+        D("RECEIVE_LICE_DATE", "領照日期"), D("Start_work_pre_date", "預定開工日期"), D("Start_work_permit_date", "核准開工日期"),
+        D("COMPLETE_DATE", "預定竣工日期"), D("Complete_permit_date", "核准竣工日期"), D("IDENTIFY_LICE_DATE", "執照核發日期"),
+        M("PS_DESC", "開工／竣工展期說明", { full: true }),
+        Y("B13_3TYPE", "起造人單獨申請變更承造人"), Y("B13_5TYPE", "起造人單獨申請變更監造人"),
+      ], { formSets: ["B"], note: "B11、B13、B21 系列使用。日期維持民國 yyyMMdd；展期的逐條理由也可填在案件備註。" }),
+      S("變更審查連結文字", [
+        M("LICENSE_LINK", "執照連結文字", { full: true }), M("P01_LINK", "起造人連結文字", { full: true }),
+        M("LAN_LINK", "地號連結文字", { full: true }), M("ADDR_LINK", "地址連結文字", { full: true }),
+      ], { formSets: ["B"], note: "B12-1 直接顯示的組合文字；只在需要沿用舊系統已組好的文字時填寫。" }),
       S("基地與土地使用分區", [
         N("BASE_AREA_ARC", "基地騎樓地等面積（㎡）"), N("BASE_AREA_SHRINK", "基地退縮面積（㎡）"),
         N("BASE_AREA_OTHER", "基地其他面積（㎡）"), N("BASE_AREA_PURPOSE", "基地特定用途面積（㎡）"),
@@ -78,7 +94,7 @@ const TABLE_CONFIG = {
   },
   BMSLAN: {
     label: "基地地號",
-    forms: ["A11-1", "A12-2", "A12-4", "A12-5", "A21-1", "A31-1", "A32-2"],
+    forms: ["A11-1", "A12-2", "A12-4", "A12-5", "A21-1", "A31-1", "A32-2", "B11-1", "B11-2", "B13-1", "B13-3", "B13-5", "B21-1", "B14-1"],
     notice: "一筆地號一列。母號與子號一定要分欄，不要先合成「875-1」再寫進 ROAD_NO1。",
     sections: [
       S("本次地號", [
@@ -108,13 +124,13 @@ const TABLE_CONFIG = {
   },
   BMSMEMO: {
     label: "案件備註",
-    forms: ["A11-1", "A21-1", "A31-1"],
+    forms: ["A11-1", "A21-1", "A31-1", "B11-2", "B13-1", "B13-3", "B13-5", "B21-1"],
     notice: "備註代碼、代碼名稱與實際全文要一起填。沒有對應代碼的自由備註可讓 MEMO_SEQ／NAME 留白，只填 DESE。",
     sections: [S("備註內容", [C("MEMO_SEQ", "備註代碼"), F("MEMO_SEQ_NAME", "備註代碼名稱"), M("DESE", "備註全文", { full: true })])],
   },
   BMSP01: {
     label: "起造人／棟戶門牌",
-    forms: ["A11-1", "A11-2", "A11-2-2", "A11-5", "A12-5", "A13-3", "A21-1", "A31-1"],
+    forms: ["A11-1", "A11-2", "A11-2-2", "A11-5", "A12-5", "A13-3", "A21-1", "A31-1", "B11-1", "B11-2", "B12-1", "B13-1", "B13-2", "B13-2-2", "B13-3", "B13-5", "B21-1", "B14-1"],
     notice: "一列代表「起造人 × 棟號／門牌／用途」關係，不一定是一位起造人一列。本樣本 24 棟因此有 24 列。",
     sections: [
       S("起造人基本資料", [
@@ -131,6 +147,14 @@ const TABLE_CONFIG = {
       S("戶籍／公司地址", addressFields("O_ADDR", "戶籍／公司－")),
       S("通訊地址", addressFields("H_ADDR", "通訊－")),
       S("建築物門牌地址", addressFields("ADDR", "門牌－"), { note: "報表會把 ADDRADR～ADDRAD9 組成完整門牌地址。" }),
+      S("變更前起造人", [
+        F("CNAME_OLD", "原姓名／公司名稱", { wide: true }), D("BIRTH_DATE_OLD", "原出生日期"),
+        F("IDENTIFY_NO_OLD", "原身分證號／統一編號"), F("TEL_NO_OLD", "原電話"), F("FAX_NO_OLD", "原傳真"), F("EMAIL_OLD", "原電子郵件", { wide: true }),
+        F("BUILDING_NO_OLD", "原棟別／單元代號"), F("CHWANG_OLD", "原幢序號"), F("DONG_OLD", "原棟序號"), F("FLOOR_OLD", "原層序號"), F("HOUSE_OLD", "原戶序號"),
+      ], { old: true, formSets: ["B"], note: "B13-2／B13-2-2 變更起造人名冊使用；未變更者可留白。" }),
+      S("變更前戶籍／公司地址", oldAddressFields("O_ADDR", "原戶籍／公司－"), { old: true, formSets: ["B"] }),
+      S("變更前通訊地址", oldAddressFields("H_ADDR", "原通訊－"), { old: true, formSets: ["B"] }),
+      S("變更前建築物門牌", oldAddressFields("ADDR", "原門牌－"), { old: true, formSets: ["B"] }),
     ],
   },
   BMSP02: {
@@ -147,7 +171,7 @@ const TABLE_CONFIG = {
   },
   BMSP03: {
     label: "監造人",
-    forms: ["A31-1"],
+    forms: ["A31-1", "B11-1", "B11-4", "B13-1", "B13-3", "B13-5", "B13-6", "B21-1", "B14-1"],
     sections: [
       S("監造建築師", [
         Y("SPOKESMAN", "主要監造人"), F("CNAME", "建築師姓名"), F("IDENTIFY_NO", "身分證號"),
@@ -155,11 +179,17 @@ const TABLE_CONFIG = {
         F("OFFICE_NAME", "事務所名稱", { wide: true }), C("COM_ZIP", "郵遞區號／行政區代碼"), F("COM_ADDRESS", "事務所地址", { full: true }),
         F("TEL_NO", "電話"), F("FAX_NO", "傳真"), F("eMail", "電子郵件", { wide: true }),
       ]),
+      S("變更前監造建築師", [
+        F("CNAME_OLD", "原建築師姓名"), F("IDENTIFY_NO_OLD", "原身分證號"),
+        C("COM_ID_AREA_OLD", "原開業證書縣市字母"), F("COM_ID_WORD_OLD", "原開業證書字別／年度"), F("COM_ID_NO_OLD", "原開業證書號碼"), F("COM_ID_NO1_OLD", "原開業證書附加號碼"),
+        F("OFFICE_NAME_OLD", "原事務所名稱", { wide: true }), C("COM_ZIP_OLD", "原郵遞區號／行政區代碼"), F("COM_ADDRESS_OLD", "原事務所地址", { full: true }),
+        F("TEL_NO_OLD", "原電話"), F("FAX_NO_OLD", "原傳真"), F("EMAIL_OLD", "原電子郵件", { wide: true }),
+      ], { old: true, formSets: ["B"], note: "B13-5、B13-6 變更監造資料使用。" }),
     ],
   },
   BMSP04: {
     label: "承造人",
-    forms: ["A11-5", "A31-1"],
+    forms: ["A11-5", "A31-1", "B11-1", "B11-3", "B13-1", "B13-3", "B13-4", "B13-5", "B21-1", "B14-1", "B14-3"],
     sections: [
       S("營造業", [
         Y("SPOKESMAN", "主要承造人"), F("COMPANY_NAME", "營造業公司名稱", { wide: true }), F("COM_IDNO", "公司統一編號"), F("BOSS", "負責人"),
@@ -171,6 +201,15 @@ const TABLE_CONFIG = {
         F("TECH_NAME", "專任工程人員姓名"), F("TECH_LIC", "專任工程人員證書字號", { wide: true }), C("FTENGTYPE", "專任工程人員種類代碼"),
         F("SCTNAME", "工地主任姓名"), F("SCTNO", "工地主任執業證號"),
       ]),
+      S("施工管理工程人員補充", [F("TECH_IDNO", "專任工程人員身分證號"), F("GUILDNO1", "公會字號 1"), F("GUILDNO2", "公會字號 2")], { formSets: ["B"] }),
+      S("變更前承造人與工程人員", [
+        F("COMPANY_NAME_OLD", "原營造業公司名稱", { wide: true }), F("COM_IDNO_OLD", "原公司統一編號"), F("BOSS_OLD", "原負責人"),
+        C("COM_ZIP_OLD", "原郵遞區號／行政區代碼"), F("COM_ADDRESS_OLD", "原公司地址", { full: true }),
+        C("ARC_REG_WORD_OLD", "原營造業登記縣市字母"), C("ARC_REG_CLAS_OLD", "原營造業登記等級"), F("ARC_REG_PRI_OLD", "原登記字號前置／序號"), F("ARC_REG_NO_OLD", "原登記字號主體"),
+        F("TECH_NAME_OLD", "原專任工程人員姓名"), F("TECH_LIC_OLD", "原專任工程人員證書字號", { wide: true }), C("FTENGTYPE_OLD", "原專任工程人員種類代碼"),
+        F("SCTNAME_OLD", "原工地主任姓名"), F("SCTNO_OLD", "原工地主任執業證號"), F("GUILDNO1_OLD", "原公會字號 1"), F("GUILDNO2_OLD", "原公會字號 2"),
+        F("TEL_NO_OLD", "原電話"), F("FAX_NO_OLD", "原傳真"), F("EMAIL_OLD", "原電子郵件", { wide: true }),
+      ], { old: true, formSets: ["B"], note: "B13-3、B13-4 變更承造資料使用。" }),
     ],
   },
   BMSPARK: {
@@ -219,6 +258,106 @@ const TABLE_CONFIG = {
       ], { old: true, note: "A31-5 使用；非變更案可留白。" }),
     ],
   },
+  BM_TEC: {
+    label: "專業技師簽證",
+    forms: ["F 建築物結構與設計專業技師簽證報告"],
+    notice: "每位技師／每個簽證項目各一列。這是原 data.txt 13 表之一，匯出時會完整寫回。",
+    sections: [
+      S("簽證分類", [C("TEC_ITEM", "簽證項目"), C("TEC_TYPE", "技師科別")]),
+      S("技師資格", [
+        F("TEC_NAME", "技師姓名"), F("CAPACITY_GET", "資格取得字別"), F("CAPACITY_NO", "技師證書字號"),
+        F("TRX_NO", "核准／換發文號", { wide: true }), F("REG_NO", "執業登記號"), D("REG_DATE", "執業登記日期"),
+      ]),
+      S("事務所", [
+        F("COM_NAME", "事務所名稱", { wide: true }), C("COM_ZIP", "郵遞區號／行政區代碼"), F("COM_ADDR", "事務所地址", { full: true }),
+        F("COM_TEL", "電話"), F("COM_FAX", "傳真"),
+      ]),
+      S("簽證內容", [F("PROGRAM", "結構計算程式", { wide: true }), M("MEMO", "備註", { full: true }), M("TEC_DATA", "簽證內容", { full: true })]),
+    ],
+  },
+  BMSSC: {
+    label: "開／竣工查報概要",
+    forms: ["B21-2"],
+    notice: "B21-2 的工程主要材料與人力資源概要主檔。PRSTYLE 決定開工或竣工查報；逐月材料請在「逐月材料與人力」填寫。",
+    sections: [
+      S("報表與角色", [
+        C("PRSTYLE", "查報類型"), F("LICENSE_OLD", "建造執照字號", { wide: true }),
+        F("P01_NAME", "起造人／工程名稱", { wide: true }), F("P04_NAME", "承造營造業", { wide: true }), F("P04_NO", "營造業編號"),
+      ]),
+      S("工程金額與地點", [
+        N("COST_PUB", "公有工程總價（元）"), N("COST_PUB_MAKING", "公有工程建造費（元）"), C("COST_PRI_SELECT", "民間工程類型"), N("COST_PRI", "民間工程總價（元）"),
+        F("ZON_WORKING", "工程地點", { full: true }), C("ZON_ZIP", "工程地點行政區／郵遞碼"),
+      ]),
+      S("工期與使用執照", [D("DATE_WORK_START", "開工日期"), D("DATE_WORK_END", "竣工日期"), D("DATE_USELIC", "使用執照日期")]),
+      S("面積、造價與停車", [
+        N("AREA_FLOOR", "地上樓地板面積（㎡）"), N("AREA_UNDER_FLOOR", "地下樓地板面積（㎡）"),
+        F("FLOOR_COST", "每㎡平均造價"), F("FLOOR_NUMBER", "樓層數文字"), N("PARK_INSIDE", "室內停車位數"), N("PARK_OUTSIDE", "室外停車位數"),
+      ]),
+      S("土地使用分區", [
+        Y("BUC1", "住宅區"), Y("BUC2", "商業區"), Y("BUC3", "工業區"), Y("BUC4", "行政區"), Y("BUC5", "文教區"),
+        Y("BUC6", "風景區"), Y("BUC7", "保護區"), Y("BUC8", "農業區"), Y("BUC9", "其他分區"),
+      ]),
+      S("使用性質", [
+        Y("BUP1", "純住宅"), Y("BUP2", "混合住宅"), Y("BUP3", "商店"), Y("BUP4", "工廠"), Y("BUP5", "辦公室"), Y("BUP6", "旅館"),
+        Y("BUP7", "倉庫"), Y("BUP8", "學校"), Y("BUP9", "醫院"), Y("BUP10", "遊樂場"), Y("BUP11", "其他用途"),
+      ]),
+      S("構造與住宅型態", [
+        Y("BUK1", "鋼骨鋼筋混凝土"), Y("BUK2", "鋼筋混凝土"), Y("BUK3", "鋼架"), Y("BUK4", "加強磚造"), Y("BUK5", "磚石"), Y("BUK6", "其他構造"),
+        Y("BUS1", "傳統式農村住宅"), Y("BUS2", "獨棟或雙併式住宅"), Y("BUS3", "連棟式住宅"), Y("BUS4", "集合住宅"),
+      ]),
+      S("總工日", [N("PEO_TECH_DATE", "技術工總工日"), N("PEO_PLAIN_DATE", "普通工總工日")], { note: "原始欄名雖含 DATE，但舊報表標示為總工日，請填純數字。" }),
+    ],
+  },
+  BMSROAD: {
+    label: "使用道路",
+    forms: ["B11-1"],
+    notice: "舊系統 Build.mdb 的道路使用資料，不屬於 data.txt 13 表；會保存在完整案件 JSON。",
+    sections: [
+      S("道路位置", [
+        Y("SPOKESMAN", "代表道路"), C("DIST", "行政區代碼"), F("ROAD_SEC", "路／街／段"), F("ALLEY", "巷"), F("LANE", "弄"), F("DOOR_NO", "號"),
+      ]),
+      S("使用內容", [N("LENGTH", "使用長度（m）"), N("WIDE", "使用寬度（m）"), D("USE_LIMITE_DAY", "使用期限"), M("USE_ANSER", "道路使用答覆／說明", { full: true }), M("MEMO", "道路備註", { full: true })]),
+    ],
+  },
+  BMSCHK: {
+    label: "施工勘驗",
+    forms: ["B14-1", "B14-2", "B14-3"],
+    notice: "B14 勘驗資料完整保留 Build.mdb 的原始欄位。B14-2 報表模板在本機缺漏，因此本頁不自行猜測報表版面。",
+    sections: [
+      S("勘驗項目", [C("CHK_Item_code", "勘驗項目代碼"), F("CHK_Item", "勘驗項目名稱", { wide: true })]),
+      S("第一次申報", [F("CHK_Reg_Number1", "第一次申報／掛號字號"), D("CHK_Date1", "第一次申報日期"), D("CHK_Over_Date1", "第一次完成日期"), Y("CHK_OK1", "第一次勘驗通過")]),
+      S("第二次申報", [F("CHK_Reg_Number2", "第二次申報／掛號字號"), D("CHK_Date2", "第二次申報日期"), D("CHK_Over_Date2", "第二次完成日期"), Y("CHK_OK2", "第二次勘驗通過")]),
+      S("建築師與技師", [Y("Struct_Tech", "需要結構技師"), F("ARCH_NAME", "建築師姓名"), F("TECH_NAME", "技師姓名"), F("TECH_LIC", "技師證照")]),
+      S("網路申報", [Y("NET_CHECK", "已完成網路查核"), D("NET_CR_DATE", "網路建立日期"), D("NET_REG_DATE", "網路掛號日期"), F("NET_REG_NO", "網路掛號號碼"), N("NET_SEQ", "網路申報序號")]),
+      S("現場查驗", [
+        Y("PECT_FLAG", "需要現場查驗"), F("PECT_RES_ITEM", "查驗結果項目", { wide: true }), F("PECT_RES", "查驗結果"), D("PECT_DATE", "查驗日期"),
+        F("BOSS_MAN", "現場負責人"), F("PECT_ITEM", "查驗項目"), M("PECT_DESC", "查驗說明", { full: true }),
+      ]),
+      S("複驗與備註", [Y("PECT_RVLFLAG", "需要複驗"), D("PECT_RVLDATE", "複驗日期"), F("UREMARK", "其他註記")]),
+    ],
+  },
+  BMSSCRP: {
+    label: "逐月材料與人力",
+    forms: ["B21-2"],
+    notice: "每個月份一列；B21-2 會加總鋼骨、鋼筋、級配、預拌混凝土與瀝青混凝土。",
+    sections: [
+      S("月份與頁次", [N("PAGE_NO", "頁次"), F("MONTHS", "月份／月次")]),
+      S("主要材料數量", [
+        N("ITEM01", "鋼骨／型鋼（噸）"), N("ITEM02", "鋼筋（噸）"), N("ITEM03", "材料項目 03"), N("ITEM04", "級配／石料及碎石（m³）"),
+        N("ITEM05", "材料項目 05"), N("ITEM06", "材料項目 06"), N("ITEM07", "預拌混凝土（m³）"), N("ITEM08", "瀝青混凝土（m³）"),
+      ]),
+      S("逐月人力", [N("PEO_TECH_DATE", "技術工工日"), N("PEO_PLAIN_DATE", "普通工工日")]),
+    ],
+  },
+  RPTPHOTO: {
+    label: "施工照片／附件",
+    forms: ["B14-4", "B14-5"],
+    notice: "檔案內容只保存在完整案件 JSON，不會寫入 data.txt。單檔上限 12 MB；匯入案件 JSON 後仍可下載原檔。",
+    sections: [
+      S("附件資料", [C("FORM_CODE", "對應書表"), D("CR_DATE", "拍照／建立日期"), M("MEMO", "照片／附件說明", { full: true })]),
+      S("檔案", [F("barcode", "照片／附件檔案", { kind: "file", full: true })]),
+    ],
+  },
 };
 
 const FORM_SETS = {
@@ -227,7 +366,11 @@ const FORM_SETS = {
     codes: ["A"],
     tables: ["BMSBASE", "BMSLAN", "BMSLANOWNER", "BMSMEMO", "BMSP01", "BMSP02", "BMSP03", "BMSP04", "BMSPARK", "BMSSTAIR", "BMSWORK"],
   },
-  B: { label: "施工管理", codes: ["B", "G"], tables: [] },
+  B: {
+    label: "施工管理",
+    codes: ["B", "G"],
+    tables: ["BMSBASE", "BMSLAN", "BMSMEMO", "BMSP01", "BMSP03", "BMSP04", "BMSSC", "BMSSCRP", "BMSROAD", "BMSCHK", "RPTPHOTO", "BM_TEC"],
+  },
   C: { label: "使用管理", codes: ["C"], tables: [] },
   D: { label: "拆除與其他", codes: ["D", "F", "H"], tables: [] },
 };
@@ -245,6 +388,11 @@ const CODE_OPTIONS = {
   "BMSBASE.LAW_03": [["05", "113/3/1 耐震設計規範版本"]],
   "BM_TEC.TEC_ITEM": [["2", "地基調查"]],
   "BM_TEC.TEC_TYPE": [["04", "大地技師"]],
+  "BMSSC.PRSTYLE": [["1", "開工查報"], ["2", "竣工查報"]],
+  "BMSSC.COST_PRI_SELECT": [["1", "建設公司"], ["2", "自建"]],
+  "BMSP04.FTENGTYPE": [["1", "主任技師"], ["2", "主任建築師"], ["3", "主任技師及主任建築師"]],
+  "BMSP04.FTENGTYPE_OLD": [["1", "主任技師"], ["2", "主任建築師"], ["3", "主任技師及主任建築師"]],
+  "RPTPHOTO.FORM_CODE": [["B14-4", "施工日誌／現況照片"], ["B14-5", "督察紀錄／檢附附件"]],
   "BMSLAN.DIST": [["436", "臺中市清水區"], ["420", "臺中市豐原區"]],
   "BMSLAN.DIST_OLD": [["436", "臺中市清水區"], ["420", "臺中市豐原區"]],
   "BMSLAN.SECTION": [["4662", "福安段（本案；須以新系統代碼庫複核）"]],
@@ -303,9 +451,13 @@ const FIELD_CODEBOOK = {
     BLD_CODE1: { type: "USECOD" }, BLD_CODE2: { type: "USECOD" }, BLD_CODE3: { type: "USECOD" },
   },
   BMSP02: { COM_ZIP: { type: "ZON", city: true }, COM_ID_AREA: { type: "PAS", value: "sub" } },
-  BMSP03: { COM_ZIP: { type: "ZON", city: true }, COM_ID_AREA: { type: "PAS", value: "sub" } },
+  BMSP03: {
+    COM_ZIP: { type: "ZON", city: true }, COM_ID_AREA: { type: "PAS", value: "sub" },
+    COM_ZIP_OLD: { type: "ZON", city: true }, COM_ID_AREA_OLD: { type: "PAS", value: "sub" },
+  },
   BMSP04: {
     COM_ZIP: { type: "ZON", city: true }, ARC_REG_WORD: { type: "PAS", value: "sub" }, ARC_REG_CLAS: { type: "ARCLS" }, FTENGTYPE: { type: "TECTYP" },
+    COM_ZIP_OLD: { type: "ZON", city: true }, ARC_REG_WORD_OLD: { type: "PAS", value: "sub" }, ARC_REG_CLAS_OLD: { type: "ARCLS" }, FTENGTYPE_OLD: { type: "TECTYP" },
   },
   BMSPARK: {
     PARK_KIND: { type: "PARKTY" }, CAR_KIND: { type: "CARTYP" }, APPL_KIND: { type: "APPLTY" }, IN_OUT: { type: "INOUT" }, UP_DOWN: { type: "UPDN" },
@@ -315,10 +467,15 @@ const FIELD_CODEBOOK = {
     USAGE_CODE1: { type: "USECOD" }, USAGE_CODE2: { type: "USECOD" }, USAGE_CODE3: { type: "USECOD" },
     USAGE_CODE1_OLD: { type: "USECOD" }, USAGE_CODE2_OLD: { type: "USECOD" }, USAGE_CODE3_OLD: { type: "USECOD" },
   },
+  BM_TEC: { TEC_ITEM: { type: "BMTEC" }, TEC_TYPE: { type: "TEC" }, COM_ZIP: { type: "ZON", city: true } },
+  BMSSC: { ZON_ZIP: { type: "ZON", city: true } },
+  BMSROAD: { DIST: { type: "ZON", city: true } },
+  BMSCHK: { CHK_Item_code: { type: "BMPECT" } },
 };
 
 const BULK_FIELDS = {
   BM_TEC: ["TEC_ITEM", "TEC_NAME", "TEC_TYPE", "CAPACITY_NO", "REG_NO", "COM_NAME"],
+  BMSSC: ["PRSTYLE", "LICENSE_OLD", "P01_NAME", "P04_NAME", "DATE_WORK_START", "DATE_WORK_END", "AREA_FLOOR", "AREA_UNDER_FLOOR"],
   BMSLAN: ["SPOKESMAN", "DIST", "SECTION", "ROAD_NO1", "ROAD_NO2", "TOT_AREA", "USE_AREA", "USE_CATEGORY_CODE1"],
   BMSLANOWNER: ["DIST", "SECTION", "ROAD_NO1", "ROAD_NO2", "owner_id", "owner", "TOT_AREA_hold", "USE_AREA_hold"],
   BMSMEMO: ["MEMO_SEQ", "MEMO_SEQ_NAME", "DESE"],
@@ -329,6 +486,9 @@ const BULK_FIELDS = {
   BMSPARK: ["PARK_KIND", "CAR_KIND", "APPL_KIND", "IN_OUT", "UP_DOWN", "NUM", "AREA", "AIR_FLAG"],
   BMSSTAIR: ["BUILDING_NO", "STORY_CODE", "USAGE_CODE1", "USAGE_CODE1_DESC", "STORY_AREA", "STORY_HEIGHT", "VERANDA_AREA", "TERRACE_AREA"],
   BMSWORK: ["CONSNAME", "BUILDING_KIND", "LENGTH", "HEIGHT", "WIDE", "AREA", "CONNUM", "DESE"],
+  BMSROAD: ["SPOKESMAN", "DIST", "ROAD_SEC", "ALLEY", "LANE", "DOOR_NO", "LENGTH", "WIDE", "USE_LIMITE_DAY"],
+  BMSCHK: ["CHK_Item_code", "CHK_Item", "CHK_Reg_Number1", "CHK_Date1", "CHK_OK1", "PECT_DATE", "PECT_RES", "PECT_RVLFLAG"],
+  BMSSCRP: ["PAGE_NO", "MONTHS", "ITEM01", "ITEM02", "ITEM04", "ITEM07", "ITEM08", "PEO_TECH_DATE", "PEO_PLAIN_DATE"],
 };
 
 const COPY_CURRENT_TO_OLD = {
@@ -353,6 +513,7 @@ const state = {
   codebook: null,
   formSet: "A",
   tables: {},
+  activeTableByFormSet: { A: "BMSBASE", B: "BMSSC", C: "", D: "" },
   activeTable: "BMSBASE",
   activeRecord: 0,
   sourceName: "內建 data.txt 範本",
@@ -436,10 +597,20 @@ function allFields(table) {
   return TABLE_CONFIG[table].sections.flatMap((section) => section.fields);
 }
 
+function visibleSections(table) {
+  return TABLE_CONFIG[table].sections
+    .map((section, index) => ({ section, index }))
+    .filter(({ section }) => !section.formSets || section.formSets.includes(state.formSet));
+}
+
+function visibleFields(table) {
+  return visibleSections(table).flatMap(({ section }) => section.fields);
+}
+
 function codeSpecFor(table, field) {
   const direct = FIELD_CODEBOOK[table]?.[field];
   if (direct) return direct;
-  if (table === "BMSP01" && /^(?:O_ADDR|H_ADDR|ADDR)ADR$/.test(field)) return { type: "ZON", city: true };
+  if (table === "BMSP01" && /^(?:O_ADDR|H_ADDR|ADDR)ADR(?:_OLD)?$/.test(field)) return { type: "ZON", city: true };
   return null;
 }
 
@@ -504,7 +675,7 @@ function sortOptionsByName(options) {
 
 function optionsFor(table, field, record = currentRecord()) {
   const fallback = CODE_OPTIONS[`${table}.${field}`]
-    || ((/^(?:O_ADDR|H_ADDR|ADDR)ADR$/.test(field) || field === "COM_ZIP") ? genericDistrictOptions : []);
+    || ((/^(?:O_ADDR|H_ADDR|ADDR)ADR(?:_OLD)?$/.test(field) || field === "COM_ZIP") ? genericDistrictOptions : []);
   const spec = codeSpecFor(table, field);
   if (!spec || !state.codebook) return sortOptionsByName(fallback);
   let rows = state.codebook.codeTypes?.[spec.type] || [];
@@ -554,7 +725,8 @@ function recordCaption(table, record, index) {
   const candidates = {
     BM_TEC: "TEC_NAME", BMSLAN: "ROAD_NO1", BMSLANOWNER: "owner", BMSMEMO: "MEMO_SEQ_NAME",
     BMSP01: "BUILDING_NO", BMSP02: "CNAME", BMSP03: "CNAME", BMSP04: "COMPANY_NAME",
-    BMSPARK: "NUM", BMSSTAIR: "STORY_CODE", BMSWORK: "CONSNAME",
+    BMSPARK: "NUM", BMSSTAIR: "STORY_CODE", BMSWORK: "CONSNAME", BMSSC: "PRSTYLE",
+    BMSROAD: "ROAD_SEC", BMSCHK: "CHK_Item", BMSSCRP: "MONTHS", RPTPHOTO: "FILE_NAME",
   };
   const field = candidates[table];
   const value = field ? record[field] : "";
@@ -564,7 +736,14 @@ function recordCaption(table, record, index) {
 
 function switchFormSet(formSet) {
   if (!Object.hasOwn(FORM_SETS, formSet) || state.formSet === formSet) return;
+  state.activeTableByFormSet[state.formSet] = state.activeTable;
   state.formSet = formSet;
+  const tables = FORM_SETS[formSet].tables;
+  const remembered = state.activeTableByFormSet[formSet];
+  state.activeTable = tables.includes(remembered) ? remembered : (tables[0] || state.activeTable);
+  state.activeTableByFormSet[formSet] = state.activeTable;
+  state.activeRecord = 0;
+  $("#fieldSearch").value = "";
   renderAll();
 }
 
@@ -591,6 +770,7 @@ function renderNav() {
   }).join("");
   $$(".nav-item").forEach((button) => button.addEventListener("click", () => {
     state.activeTable = button.dataset.table;
+    state.activeTableByFormSet[state.formSet] = state.activeTable;
     state.activeRecord = 0;
     $("#fieldSearch").value = "";
     renderAll();
@@ -609,7 +789,7 @@ function renderFormSetPlaceholder() {
 function renderRecordControls() {
   const table = state.activeTable;
   const rows = currentRows();
-  const repeatable = state.bootstrap.tableMeta[table]?.repeatable;
+  const repeatable = tableMetaFor(table)?.repeatable;
   if (state.activeRecord >= rows.length) state.activeRecord = Math.max(0, rows.length - 1);
   $("#recordSelect").innerHTML = rows.length
     ? rows.map((record, index) => `<option value="${index}" ${index === state.activeRecord ? "selected" : ""}>${escapeHtml(recordCaption(table, record, index))}</option>`).join("")
@@ -742,7 +922,18 @@ function renderField(field, record, table) {
   const pickerField = optionField && useModalForOptions(options);
   const labelFor = pickerField ? `${fieldId}-picker` : fieldId;
   let control;
-  if (field.multiline) {
+  if (field.kind === "file") {
+    const fileName = record.FILE_NAME || (value ? "已保存的附件" : "尚未選擇檔案");
+    const fileSize = Number(record.FILE_SIZE || 0);
+    const sizeLabel = fileSize ? `，${(fileSize / 1024).toLocaleString("zh-Hant", { maximumFractionDigits: 1 })} KB` : "";
+    control = `<div class="attachment-control">
+      <input id="${fieldId}" type="file" accept="image/*,.pdf,application/pdf" multiple data-attachment-input="${field.name}" hidden>
+      <button class="button secondary compact" type="button" data-select-attachment="${field.name}">選擇檔案（可多選）</button>
+      <button class="quiet-button" type="button" data-download-attachment="${field.name}" ${value ? "" : "disabled"}>下載目前檔案</button>
+      <button class="quiet-button danger" type="button" data-clear-attachment="${field.name}" ${value ? "" : "disabled"}>清除檔案</button>
+      <small class="attachment-summary">${escapeHtml(`${fileName}${sizeLabel}`)}</small>
+    </div>`;
+  } else if (field.multiline) {
     control = `<textarea id="${fieldId}" data-field="${field.name}" placeholder="${escapeHtml(field.placeholder || "")}">${escapeHtml(value)}</textarea>`;
   } else if (optionField && !pickerField) {
     control = `<select class="compact-option-select" id="${fieldId}" data-field="${field.name}" aria-label="${escapeHtml(field.label)}">
@@ -780,6 +971,7 @@ function sectionStartsOpen(table, section, index) {
 
 function renderEditor() {
   const config = TABLE_CONFIG[state.activeTable];
+  const sections = visibleSections(state.activeTable);
   const record = currentRecord();
   $("#tableRawName").textContent = state.activeTable;
   $("#tableTitle").textContent = config.label;
@@ -795,7 +987,7 @@ function renderEditor() {
     syncSectionToggleButton();
     return;
   }
-  $("#fieldGroups").innerHTML = config.sections.map((section, index) => `<details class="field-section ${section.old ? "old-section" : ""}" data-section-index="${index}" ${sectionStartsOpen(state.activeTable, section, index) ? "open" : ""}>
+  $("#fieldGroups").innerHTML = sections.map(({ section, index }) => `<details class="field-section ${section.old ? "old-section" : ""}" data-section-index="${index}" ${sectionStartsOpen(state.activeTable, section, index) ? "open" : ""}>
     <summary class="section-heading"><h3>${escapeHtml(section.title)}</h3></summary>
     <div class="section-body">
       ${section.copyCurrent ? `<div class="section-actions"><button class="button secondary compact section-copy-button" type="button" data-copy-current="${section.copyCurrent}">${escapeHtml(section.copyLabel)}</button></div>` : ""}
@@ -803,7 +995,7 @@ function renderEditor() {
       <div class="field-grid">${section.fields.map((field) => renderField(field, record, state.activeTable)).join("")}</div>
     </div>
   </details>`).join("");
-  $("#fieldCount").textContent = `${allFields(state.activeTable).length} 欄`;
+  $("#fieldCount").textContent = `${visibleFields(state.activeTable).length} 欄`;
   $$("[data-field]").forEach((control) => {
     control.addEventListener("input", handleFieldInput);
     control.addEventListener("change", handleFieldInput);
@@ -815,6 +1007,14 @@ function renderEditor() {
     openOptionPicker(target, field.label, pickerOptionsForField(state.activeTable, field, record), `${state.activeTable}.${field.name}`);
   }));
   $$("[data-copy-current]").forEach((button) => button.addEventListener("click", () => copyCurrentValuesToOld(button.dataset.copyCurrent)));
+  $$("[data-select-attachment]").forEach((button) => button.addEventListener("click", () => {
+    button.closest(".field").querySelector("[data-attachment-input]").click();
+  }));
+  $$("[data-attachment-input]").forEach((input) => input.addEventListener("change", (event) => {
+    handleAttachmentFiles([...event.currentTarget.files]).catch((error) => toast(error.message, "error"));
+  }));
+  $$("[data-download-attachment]").forEach((button) => button.addEventListener("click", downloadCurrentAttachment));
+  $$("[data-clear-attachment]").forEach((button) => button.addEventListener("click", clearCurrentAttachment));
   $$(".field-info").forEach((button) => button.addEventListener("click", () => toast(button.title)));
   $$(".field-section").forEach((section) => section.addEventListener("toggle", () => {
     state.sectionOpen[sectionOpenKey(state.activeTable, Number(section.dataset.sectionIndex))] = section.open;
@@ -822,6 +1022,70 @@ function renderEditor() {
   }));
   applyFieldSearch();
   syncSectionToggleButton();
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
+}
+
+async function applyAttachmentFile(record, file) {
+  if (file.size > MAX_ATTACHMENT_BYTES) throw new Error(`${file.name} 超過單檔 12 MB 上限。`);
+  record.barcode = arrayBufferToBase64(await file.arrayBuffer());
+  record.FILE_NAME = file.name;
+  record.MIME_TYPE = file.type || "application/octet-stream";
+  record.FILE_SIZE = String(file.size);
+}
+
+async function handleAttachmentFiles(files) {
+  if (state.activeTable !== "RPTPHOTO" || !files.length) return;
+  const rows = activeTables().RPTPHOTO;
+  const current = currentRecord();
+  if (!current) return;
+  const inheritedFormCode = current.FORM_CODE || "B14-4";
+  for (let index = 0; index < files.length; index += 1) {
+    const record = index === 0 ? current : blankRecord("RPTPHOTO");
+    if (!record.FORM_CODE) record.FORM_CODE = inheritedFormCode;
+    await applyAttachmentFile(record, files[index]);
+    if (index > 0) rows.push(record);
+  }
+  normalizeRowMetadata("RPTPHOTO");
+  state.activeRecord = Math.max(0, rows.length - 1);
+  renderAll();
+  setStatus(`已加入 ${files.length} 個附件，尚未匯出完整案件 JSON`, "warn");
+  toast(`已保存 ${files.length} 個檔案；請匯出完整案件 JSON 留存。`);
+}
+
+function downloadCurrentAttachment() {
+  const record = currentRecord();
+  if (!record?.barcode) return;
+  try {
+    const binary = atob(record.barcode);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const blob = new Blob([bytes], { type: record.MIME_TYPE || "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = record.FILE_NAME || "CPAMI_attachment";
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+  } catch {
+    toast("目前附件內容不是有效的 Base64，無法下載。", "error");
+  }
+}
+
+function clearCurrentAttachment() {
+  const record = currentRecord();
+  if (!record) return;
+  for (const field of ["barcode", "FILE_NAME", "MIME_TYPE", "FILE_SIZE"]) record[field] = "";
+  renderEditor();
+  setStatus("已清除目前附件檔案，尚未匯出完整案件 JSON", "warn");
 }
 
 function renderAll() {
@@ -884,6 +1148,9 @@ function hydrateDerived(table, record, changedField = "") {
   if (direct && !record[direct[0]]) {
     record[direct[0]] = selectedCodeLabel(table, changedField, record[changedField], record) || direct[1][record[changedField]] || "";
   }
+  if (table === "BMSCHK" && changedField === "CHK_Item_code" && !record.CHK_Item) {
+    record.CHK_Item = selectedCodeLabel(table, changedField, record[changedField], record);
+  }
 
   if (table === "BMSP01" && /^BLD_CODE[123]$/.test(changedField)) {
     const number = changedField.slice(-1);
@@ -907,7 +1174,7 @@ function hydrateDerived(table, record, changedField = "") {
 
 function blankRecord(table) {
   const record = {};
-  for (const field of state.bootstrap.fieldOrder[table]) record[field] = "";
+  for (const field of fieldOrderFor(table)) record[field] = "";
   const baseKey = activeTables().BMSBASE?.[0]?.INDEX_KEY || "";
   if (Object.hasOwn(record, "INDEX_KEY")) record.INDEX_KEY = baseKey;
   return record;
@@ -927,7 +1194,7 @@ function addRecord(copyCurrent = false) {
 
 function deleteRecord() {
   const rows = currentRows();
-  if (!rows.length || !state.bootstrap.tableMeta[state.activeTable]?.repeatable) return;
+  if (!rows.length || !tableMetaFor(state.activeTable)?.repeatable) return;
   const caption = recordCaption(state.activeTable, rows[state.activeRecord], state.activeRecord);
   if (!window.confirm(`確定刪除「${caption}」？`)) return;
   rows.splice(state.activeRecord, 1);
@@ -937,7 +1204,7 @@ function deleteRecord() {
 }
 
 function clearTableData(table) {
-  const repeatable = Boolean(state.bootstrap.tableMeta[table]?.repeatable);
+  const repeatable = Boolean(tableMetaFor(table)?.repeatable);
   activeTables()[table] = repeatable ? [] : [blankRecord(table)];
   return activeTables()[table];
 }
@@ -947,7 +1214,7 @@ function openClearCurrentTableDialog() {
   const rows = activeTables()[table] || [];
   if (!rows.length) return;
   const label = TABLE_CONFIG[table].label;
-  const repeatable = Boolean(state.bootstrap.tableMeta[table]?.repeatable);
+  const repeatable = Boolean(tableMetaFor(table)?.repeatable);
   state.pendingClearTable = table;
   $("#clearTableDialogTitle").textContent = `清空「${label}」`;
   $("#clearTableMessage").textContent = repeatable
@@ -1222,7 +1489,7 @@ function applyFieldSearch() {
     if (query && hasVisible) section.open = true;
   });
   if (currentRecord()) {
-    const total = allFields(state.activeTable).length;
+    const total = visibleFields(state.activeTable).length;
     $("#fieldCount").textContent = query ? `${visible}／${total} 欄` : `${total} 欄`;
   }
   syncSectionToggleButton();
@@ -1236,11 +1503,36 @@ function activeTables() {
   return state.tables;
 }
 
+function fieldOrderFor(table) {
+  return state.bootstrap?.fieldOrder?.[table] || state.bootstrap?.extraFieldOrder?.[table] || [];
+}
+
+function tableMetaFor(table) {
+  return state.bootstrap?.tableMeta?.[table] || state.bootstrap?.extraTableMeta?.[table] || null;
+}
+
+function standardTablesPayload() {
+  return Object.fromEntries((state.bootstrap?.tableOrder || []).map((table) => [table, activeTables()[table] || []]));
+}
+
+function extraTablesPayload() {
+  return Object.fromEntries((state.bootstrap?.extraTableOrder || []).map((table) => [table, activeTables()[table] || []]));
+}
+
+function mergeCaseTables(tables, extraTables = {}) {
+  return { ...deepClone(tables || {}), ...deepClone(extraTables || {}) };
+}
+
+function hasExtraData() {
+  return (state.bootstrap?.extraTableOrder || []).some((table) => (activeTables()[table] || []).length > 0);
+}
+
 function caseEnvelope() {
   return {
     schemaVersion: state.schemaVersion,
     formSet: state.formSet,
-    tables: activeTables(),
+    tables: standardTablesPayload(),
+    extraTables: extraTablesPayload(),
   };
 }
 
@@ -1256,22 +1548,42 @@ async function caseBootstrap() {
   state.bootstrap = data;
   state.schemaVersion = data.schemaVersion;
   state.codebook = codebook;
-  state.tables = deepClone(data.tables);
+  state.tables = mergeCaseTables(data.tables, data.extraTables);
   return data;
 }
 
 async function caseImportDataTxt(file) {
   const data = await apiJson("/api/import-data-txt", { method: "POST", body: await file.arrayBuffer() });
-  state.tables = data.tables;
+  state.tables = mergeCaseTables(data.tables, data.extraTables);
   state.sourceName = file.name;
+  state.formSet = "A";
   state.activeTable = "BMSBASE";
+  state.activeTableByFormSet.A = "BMSBASE";
   state.activeRecord = 0;
+  return data;
+}
+
+async function caseImportJson(file) {
+  const text = (await file.text()).replace(/^\uFEFF/, "");
+  let payload;
+  try { payload = JSON.parse(text); }
+  catch { throw new Error("案件 JSON 格式錯誤。"); }
+  const data = await apiJson("/api/import-case-json", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+  });
+  state.tables = mergeCaseTables(data.tables, data.extraTables);
+  state.formSet = Object.hasOwn(FORM_SETS, data.formSet) ? data.formSet : "A";
+  const tables = FORM_SETS[state.formSet].tables;
+  state.activeTable = tables[0] || "BMSBASE";
+  state.activeTableByFormSet[state.formSet] = state.activeTable;
+  state.activeRecord = 0;
+  state.sourceName = file.name;
   return data;
 }
 
 function caseNewBlank() {
   const emptyTables = {};
-  for (const table of state.bootstrap.tableOrder) emptyTables[table] = [];
+  for (const table of [...state.bootstrap.tableOrder, ...state.bootstrap.extraTableOrder]) emptyTables[table] = [];
   state.tables = emptyTables;
   const base = blankRecord("BMSBASE");
   base.SEQ_NO = "1";
@@ -1280,7 +1592,9 @@ function caseNewBlank() {
   base.LINK_TYPE = "N";
   base.TempBuild = "N";
   state.tables.BMSBASE = [base];
+  state.formSet = "A";
   state.activeTable = "BMSBASE";
+  state.activeTableByFormSet = { A: "BMSBASE", B: "BMSSC", C: "", D: "" };
   state.activeRecord = 0;
   state.sourceName = "新空白案件";
 }
@@ -1297,7 +1611,17 @@ function caseExport() {
   });
 }
 
+function caseExportJson() {
+  for (const table of [...state.bootstrap.tableOrder, ...state.bootstrap.extraTableOrder]) normalizeRowMetadata(table);
+  const json = `\uFEFF${JSON.stringify(caseEnvelope(), null, 2)}\n`;
+  downloadTextFile("CPAMI_complete_case.json", json, "application/json");
+}
+
 async function loadDataTxt(file) {
+  if (hasExtraData() && !window.confirm("載入另一份 data.txt 會清除目前完整案件 JSON 中的道路、勘驗、逐月材料與附件資料。確定繼續？")) {
+    $("#dataFileInput").value = "";
+    return;
+  }
   setStatus("正在解析 CP950 data.txt…", "warn");
   try {
     const data = await caseImportDataTxt(file);
@@ -1309,6 +1633,26 @@ async function loadDataTxt(file) {
     toast(error.message, "error");
   } finally {
     $("#dataFileInput").value = "";
+  }
+}
+
+async function loadCaseJson(file) {
+  if (!window.confirm("載入完整案件 JSON 會取代目前畫面中的 13 表與所有擴充資料。確定繼續？")) {
+    $("#caseJsonFileInput").value = "";
+    return;
+  }
+  setStatus("正在載入完整案件 JSON…", "warn");
+  try {
+    const data = await caseImportJson(file);
+    renderAll();
+    const extraCount = Object.values(data.extraTables || {}).reduce((sum, rows) => sum + rows.length, 0);
+    setStatus(`已載入 ${file.name}，含 ${extraCount} 筆擴充資料`, data.validation.ok ? "ok" : "warn");
+    toast("完整案件 JSON 已載入；data.txt 13 表與擴充資料都已還原。 ");
+  } catch (error) {
+    setStatus("案件 JSON 載入失敗", "error");
+    toast(error.message, "error");
+  } finally {
+    $("#caseJsonFileInput").value = "";
   }
 }
 
@@ -1369,11 +1713,17 @@ async function exportDataTxt() {
     anchor.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 1500);
     setStatus(`已匯出 data.txt（CP950，${blob.size.toLocaleString()} bytes）`, "ok");
-    toast("data.txt 已產生：13 表、固定欄序、CRLF、CP950。 ");
+    toast("data.txt 已完整產生：13 表、596 欄、固定欄序、CRLF、CP950。擴充資料請另存完整案件 JSON。 ");
   } catch (error) {
     setStatus("匯出失敗", "error");
     toast(error.message, "error");
   }
+}
+
+function exportCaseJson() {
+  caseExportJson();
+  setStatus("已匯出完整案件 JSON（含 data.txt 13 表與擴充資料）", "ok");
+  toast("完整案件 JSON 已產生，可保存道路、勘驗、逐月材料與附件。 ");
 }
 
 function decodeSource(buffer) {
@@ -1533,8 +1883,8 @@ function applyMapping() {
     for (const targetField of mappings.map(([, target]) => target)) hydrateDerived(table, record, targetField);
     return record;
   });
-  if (!state.bootstrap.tableMeta[table]?.repeatable) rows = rows.slice(0, 1);
-  if ($("#importModeSelect").value === "append" && state.bootstrap.tableMeta[table]?.repeatable) activeTables()[table].push(...rows);
+  if (!tableMetaFor(table)?.repeatable) rows = rows.slice(0, 1);
+  if ($("#importModeSelect").value === "append" && tableMetaFor(table)?.repeatable) activeTables()[table].push(...rows);
   else activeTables()[table] = rows;
   state.activeTable = table;
   state.activeRecord = 0;
@@ -1570,6 +1920,7 @@ const SAMPLE_PATCHES = {
   BMSP02: [{ SPOKESMAN: "Y", CNAME: "王範例", COM_ID_AREA: "M", COM_ID_WORD: "115", COM_ID_NO: "000001", OFFICE_NAME: "範例建築師事務所", COM_ZIP: "400", COM_ADDRESS: "範例路1號", TEL_NO: "04-12345678", eMail: "architect@example.com" }],
   BMSP03: [{ SPOKESMAN: "Y", CNAME: "李範例", COM_ID_AREA: "M", COM_ID_WORD: "115", COM_ID_NO: "000002", OFFICE_NAME: "範例監造建築師事務所", COM_ZIP: "400", COM_ADDRESS: "範例路2號", TEL_NO: "04-23456789" }],
   BMSP04: [{ SPOKESMAN: "Y", COMPANY_NAME: "範例營造股份有限公司", COM_IDNO: "87654321", BOSS: "陳範例", COM_ZIP: "400", COM_ADDRESS: "範例路3號", ARC_REG_WORD: "M", ARC_REG_CLAS: "1", ARC_REG_PRI: "001", ARC_REG_NO: "N00001", TECH_NAME: "林範例", TECH_LIC: "技證字第000001號", SCTNAME: "張範例", SCTNO: "40H0000001" }],
+  BM_TEC: [{ TEC_ITEM: "2", TEC_NAME: "王範例", TEC_TYPE: "04", CAPACITY_NO: "技證字第000001號", REG_NO: "技執字第000001號", COM_NAME: "範例技師事務所", COM_ZIP: "400", COM_ADDR: "臺中市範例區範例路4號", REG_DATE: "1150101", MEMO: "範例簽證內容" }],
   BMSPARK: [
     { PARK_KIND: "1", CAR_KIND: "1", APPL_KIND: "1", IN_OUT: "1", UP_DOWN: "1", NUM: "8", AREA: "110", AIR_FLAG: "N" },
     { PARK_KIND: "1", CAR_KIND: "2", APPL_KIND: "2", IN_OUT: "2", UP_DOWN: "1", NUM: "12", AREA: "30", AIR_FLAG: "N" },
@@ -1579,6 +1930,14 @@ const SAMPLE_PATCHES = {
     { STORY_CODE: "U0020", USAGE_CODE1: "H2", USAGE_CODE1_DESC: "住宅", USAGE_CODE1_T: "H2", STORY_AREA: "480", STORY_HEIGHT: "3.2", VERANDA_AREA: "18", TERRACE_AREA: "0" },
   ],
   BMSWORK: [{ CONSNAME: "圍牆", BUILDING_KIND: "RC造", LENGTH: "50", HEIGHT: "2", WIDE: "0.15", AREA: "100", CONNUM: "1式", DESE: "範例雜項工作物" }],
+  BMSSC: [{ PRSTYLE: "1", LICENSE_OLD: "範例建照字第00001號", P01_NAME: "範例建設股份有限公司", P04_NAME: "範例營造股份有限公司", COST_PRI_SELECT: "1", COST_PRI: "15000000", ZON_WORKING: "臺中市範例區範例路", ZON_ZIP: "400", DATE_WORK_START: "1150201", AREA_FLOOR: "1800", AREA_UNDER_FLOOR: "0", PARK_INSIDE: "8", PARK_OUTSIDE: "0", BUC1: "Y", BUP1: "Y", BUK2: "Y", BUS4: "Y", PEO_TECH_DATE: "120", PEO_PLAIN_DATE: "360" }],
+  BMSROAD: [{ SPOKESMAN: "Y", DIST: "400", ROAD_SEC: "範例路", ALLEY: "", LANE: "", DOOR_NO: "1", LENGTH: "20", WIDE: "8", USE_LIMITE_DAY: "1151231", MEMO: "範例使用道路" }],
+  BMSCHK: [{ CHK_Item_code: "000001", CHK_Item: "範例施工勘驗項目", CHK_Reg_Number1: "範例掛號0001", CHK_Date1: "1150301", CHK_OK1: "Y", ARCH_NAME: "李範例", TECH_NAME: "王範例", NET_CHECK: "N", PECT_FLAG: "Y", PECT_DATE: "1150302", PECT_RES: "合格" }],
+  BMSSCRP: [
+    { PAGE_NO: "1", MONTHS: "115年2月", ITEM01: "10", ITEM02: "20", ITEM04: "30", ITEM07: "40", ITEM08: "5", PEO_TECH_DATE: "12", PEO_PLAIN_DATE: "36" },
+    { PAGE_NO: "1", MONTHS: "115年3月", ITEM01: "8", ITEM02: "16", ITEM04: "24", ITEM07: "32", ITEM08: "4", PEO_TECH_DATE: "10", PEO_PLAIN_DATE: "30" },
+  ],
+  RPTPHOTO: [{ FORM_CODE: "B14-4", CR_DATE: "1150302", MEMO: "請在前端選擇範例照片或附件；CSV／XML 中 barcode 可留空。" }],
 };
 
 function sampleRowsFor(table) {
@@ -1675,8 +2034,11 @@ async function bootstrap() {
 }
 
 $("#loadDataButton").addEventListener("click", () => $("#dataFileInput").click());
+$("#loadCaseJsonButton").addEventListener("click", () => $("#caseJsonFileInput").click());
+$("#exportCaseJsonButton").addEventListener("click", exportCaseJson);
 $("#newCaseButton").addEventListener("click", newBlankCase);
 $("#dataFileInput").addEventListener("change", (event) => { if (event.target.files[0]) loadDataTxt(event.target.files[0]); });
+$("#caseJsonFileInput").addEventListener("change", (event) => { if (event.target.files[0]) loadCaseJson(event.target.files[0]); });
 $("#recordSelect").addEventListener("change", (event) => { state.activeRecord = Number(event.target.value); renderEditor(); });
 $("#addRecordButton").addEventListener("click", () => addRecord(false));
 $("#copyRecordButton").addEventListener("click", () => addRecord(true));
@@ -1755,7 +2117,7 @@ $("#bulkDialog").addEventListener("close", () => {
   state.bulkDirty = false;
   if (savedChanges) toast("批次修改已自動保留");
 });
-for (const id of ["newCaseButton", "openSamplesButton", "validateButton"]) {
+for (const id of ["newCaseButton", "loadCaseJsonButton", "exportCaseJsonButton", "openSamplesButton", "validateButton"]) {
   $(`#${id}`).addEventListener("click", () => { $("#actionMenu").open = false; });
 }
 document.addEventListener("click", (event) => {

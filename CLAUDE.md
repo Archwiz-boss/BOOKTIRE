@@ -12,6 +12,7 @@
 | `cpami-form-editor/web/`（index.html、app.js、styles.css、codebook.json） | 前端。vanilla JS，無框架、無 npm 依賴、無建置步驟 |
 | `cpami-form-editor/server.py` | 本機伺服器。只用 Python 標準庫，須可在離線 Windows 工作站執行 |
 | `cpami-form-editor/tests/` | node 煙霧測試＋伺服器 roundtrip 測試 |
+| `cpami-form-editor/schema/` | `data_txt_schema.json` 定義 13 表；`case_extension_schema.json` 定義完整案件 JSON 的 13 表外資料 |
 | `cpami-form-editor/tools/export_codebook.ps1` | 從舊系統 MDB 重新產生 codebook.json（32 位元 PowerShell） |
 | `cpami/Arch2016C/` | 舊系統原程式（fr3 報表模板、bldcode.mdb、Build.mdb）。**唯讀參考，禁止修改，不入版控** |
 | 根目錄 `data.txt` | 目前工作案件。**含真實個資，絕不入版控** |
@@ -37,6 +38,7 @@
 8. **位元組級 roundtrip 是最高驗收標準**：載入一份合法 data.txt 不經修改直接匯出，必須逐位元組相同（`tests/server_roundtrip_test.py` 驗證）。
 9. 欄名（含 `person_seq`、`eMail` 等大小寫不一致者）是舊系統契約，禁止「訂正」拼寫或大小寫。
 10. 前端未顯示的系統／相容欄位（含 `BM_TEC`、`BMSSC`）在載入、編輯、匯出全程保留原值。
+11. 匯出時即使某個子表沒有使用者資料，也要輸出一筆完整欄序的空白記錄；不可只寫表名，已通過主檔驗證的稀疏案件也必須能重新匯入並核對 596 欄。
 
 欄位語意、代碼對應、報表計算欄位回推，一律以根目錄兩份對應表文件為準；文件沒寫的，回 `cpami/Arch2016C/fsrp/frx*.fr3` 與 MDB 查證，不要猜。
 
@@ -88,6 +90,7 @@
 - **PostgreSQL 對接預備**：`docs/POSTGRES_INTEGRATION_PLAN.md`——資料模型、案件 JSON 封套、DDL 草案、預備工項。編輯器本體保持可離線單機使用；對接走「案件文件」交換層。
 - **Codex 工作指令集**：`docs/CODEX_PROMPTS.md`——依編號逐一執行，每個 Prompt 自帶驗收標準。
 - **書表組擴充（A → B → C／D）**：以側邊欄「書表組」切換整排資料群組清單；A 組（現有 11 群組）行為不得回歸。B／C／D 組實作前必須先產出對應表研究文件（比照 `CPAMI_指定書表_實用數據對應表.md` 的格式），且不在 data.txt 13 表內的資料一律先列缺口、經使用者決策後才能新增儲存格式。
+- **目前書表組現況**：A 組 11 群組維持既有操作；B 組已開放共用資料、`BMSSC`、`BM_TEC`，以及案件封套 `extraTables` 的 `BMSROAD/BMSCHK/BMSSCRP/RPTPHOTO`。完整案件 JSON 保存 13 表外資料；data.txt 匯出仍只能且必須完整輸出原 13 表、596 欄。C／D 組尚待 Prompt 7 研究。
 
 ## 8. 文件維護規則
 

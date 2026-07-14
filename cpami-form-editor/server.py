@@ -24,7 +24,7 @@ APP_ROOT = Path(__file__).resolve().parent
 WEB_ROOT = APP_ROOT / "web"
 SCHEMA_PATH = APP_ROOT / "schema" / "data_txt_schema.json"
 SAMPLE_PATH = APP_ROOT.parent / "data.txt"
-MAX_BODY = 24 * 1024 * 1024
+MAX_BODY = 96 * 1024 * 1024
 
 
 def load_initial_tables(schema: dict[str, Any]) -> tuple[dict[str, list[dict[str, str]]], bool]:
@@ -112,7 +112,7 @@ class Handler(SimpleHTTPRequestHandler):
         except ValueError as exc:
             raise DataTxtError("Content-Length 無效。") from exc
         if length <= 0 or length > MAX_BODY:
-            raise DataTxtError("上傳內容為空或超過 24 MB。")
+            raise DataTxtError("上傳內容為空或超過 96 MB。")
         return self.rfile.read(length)
 
     def read_json(self) -> dict[str, Any]:
@@ -135,7 +135,13 @@ class Handler(SimpleHTTPRequestHandler):
                 "tableOrder": copy.deepcopy(SCHEMA["tableOrder"]),
                 "fieldOrder": copy.deepcopy(SCHEMA["fieldOrder"]),
                 "tableMeta": copy.deepcopy(SCHEMA["tableMeta"]),
+                "extraTableOrder": copy.deepcopy(SCHEMA.get("extraTableOrder", [])),
+                "extraFieldOrder": copy.deepcopy(SCHEMA.get("extraFieldOrder", {})),
+                "extraTableMeta": copy.deepcopy(SCHEMA.get("extraTableMeta", {})),
                 "tables": copy.deepcopy(INITIAL_TABLES),
+                "extraTables": {
+                    table: [] for table in SCHEMA.get("extraTableOrder", [])
+                },
                 "sampleLoaded": SAMPLE_LOADED,
             }
             self.send_json(data)
@@ -159,17 +165,37 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json(
                     {
                         "tables": prepared,
+                        "extraTables": {
+                            table: [] for table in SCHEMA.get("extraTableOrder", [])
+                        },
                         "validation": core.validate_tables(prepared, SCHEMA),
                     }
                 )
                 return
 
-            if path == "/api/validate":
-                tables = core.parse_envelope(self.read_json(), SCHEMA)
-                prepared = core.prepare_payload(
-                    {"tables": tables}, SCHEMA, fill_defaults=False
+            if path == "/api/import-case-json":
+                envelope = core.prepare_case_envelope(
+                    self.read_json(),
+                    SCHEMA,
+                    fill_defaults=False,
+                    allow_data_txt_unsafe=True,
                 )
-                self.send_json(core.validate_tables(prepared, SCHEMA))
+                self.send_json(
+                    {
+                        **envelope,
+                        "validation": core.validate_case_envelope(envelope, SCHEMA),
+                    }
+                )
+                return
+
+            if path == "/api/validate":
+                envelope = core.prepare_case_envelope(
+                    self.read_json(),
+                    SCHEMA,
+                    fill_defaults=False,
+                    allow_data_txt_unsafe=True,
+                )
+                self.send_json(core.validate_case_envelope(envelope, SCHEMA))
                 return
 
             if path == "/api/export":

@@ -16,7 +16,7 @@ SCHEMA_VERSION = "2026-07-14"
 if str(APP_ROOT) not in sys.path:
     sys.path.insert(0, str(APP_ROOT))
 
-from server import (  # noqa: E402  (the application root must be on sys.path first)
+from cpami_core import (  # noqa: E402  (the application root must be on sys.path first)
     REPEATABLE_TABLES,
     TABLE_LABELS,
     parse_data_txt_bytes,

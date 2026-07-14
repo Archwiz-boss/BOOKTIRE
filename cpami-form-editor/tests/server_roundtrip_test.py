@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,23 @@ def export_tables(tables: dict[str, list[dict[str, str]]]) -> tuple[bytes, str, 
     return post("/api/export", payload, "application/json; charset=utf-8")
 
 
+def post_json_response(path: str, payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    request = urllib.request.Request(
+        f"{BASE_URL}{path}",
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json; charset=utf-8"},
+    )
+    try:
+        response = urllib.request.urlopen(request, timeout=30)
+    except urllib.error.HTTPError as error:
+        response = error
+    with response:
+        assert response.headers.get_content_type() == "application/json"
+        return json.load(response), response.status
+
+
 index_bytes, index_type, index_status = get("/")
 app_bytes, app_type, app_status = get("/app.js")
 styles_bytes, styles_type, styles_status = get("/styles.css")
@@ -61,6 +79,32 @@ fixture_export, fixture_export_type, fixture_export_status = export_tables(
 )
 assert fixture_import_status == fixture_export_status == 200
 assert fixture_export == fixture
+
+legacy_validation, legacy_validation_status = post_json_response(
+    "/api/validate", {"tables": fixture_import["tables"]}
+)
+envelope = {
+    "schemaVersion": schema["schemaVersion"],
+    "formSet": "A",
+    "tables": fixture_import["tables"],
+}
+envelope_validation, envelope_validation_status = post_json_response(
+    "/api/validate", envelope
+)
+wrong_version = "1900-01-01"
+version_error, version_error_status = post_json_response(
+    "/api/validate", {**envelope, "schemaVersion": wrong_version}
+)
+envelope_export_payload = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
+envelope_export, _envelope_export_type, envelope_export_status = post(
+    "/api/export", envelope_export_payload, "application/json; charset=utf-8"
+)
+assert legacy_validation_status == envelope_validation_status == 200
+assert legacy_validation["ok"] and envelope_validation["ok"]
+assert version_error_status == 400
+assert wrong_version in version_error["error"]
+assert schema["schemaVersion"] in version_error["error"]
+assert envelope_export_status == 200 and envelope_export == fixture
 
 field_count = sum(len(fields) for fields in bootstrap["fieldOrder"].values())
 real_roundtrip: bool | None = None
@@ -121,6 +165,12 @@ report = {
     "fixtureExport": [fixture_export_status, fixture_export_type, len(fixture_export)],
     "fixtureExactRoundtrip": fixture_export == fixture,
     "fixtureSha256": hashlib.sha256(fixture).hexdigest(),
+    "envelopeApi": {
+        "legacyValidate": legacy_validation_status,
+        "envelopeValidate": envelope_validation_status,
+        "versionMismatch": version_error_status,
+        "envelopeExportExact": envelope_export == fixture,
+    },
     "realRoundtrip": real_roundtrip,
     "bootstrapMatchesReal": bootstrap_matches_real,
 }

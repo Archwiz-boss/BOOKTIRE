@@ -128,6 +128,7 @@ Access MDB 使用 32 位元 Jet Provider，請以 32 位元 Windows PowerShell �
 ```powershell
 node --check .\web\app.js
 node .\tests\frontend_smoke_test.js
+python -X utf8 .\tests\core_unit_test.py
 python -X utf8 .\tests\server_roundtrip_test.py
 ```
 

@@ -10,7 +10,7 @@
 | # | 工項 | 完成日 |
 |---|---|---|
 | ☑ 1 | 版控衛生、虛構 fixture、schema 抽離 | 2026-07-14 |
-| ☐ 2 | 格式引擎 cpami_core.py 與案件封套 | |
+| ☑ 2 | 格式引擎 cpami_core.py 與案件封套 | 2026-07-14 |
 | ☐ 3 | 前端 caseStore 收口與 FORM_SETS 骨架 | |
 | ☐ 4 | PostgreSQL DDL 與匯入匯出工具 | |
 | ☐ 5 | 側邊欄書表組切換 UI | |

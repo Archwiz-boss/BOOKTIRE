@@ -42,6 +42,11 @@ app.state.tables = { BMSBASE: [{ BMPAS: "I80" }] };
 assert.equal(app.state.schemaVersion, null);
 assert(source.includes("state.schemaVersion = data.schemaVersion"));
 assert(source.includes("未載入案件，可載入 data.txt 或建立新空白案件"));
+assert.equal(
+  source.split('JSON.stringify({ schemaVersion: state.schemaVersion, formSet: "A", tables: state.tables })').length - 1,
+  2,
+  "Validate and export must both send the versioned case envelope",
+);
 assert.equal(codebook.version, 2);
 assert.equal(codebook.source.bldcodeRows, 22383);
 assert.equal(codebook.officialSections.length, 1626);

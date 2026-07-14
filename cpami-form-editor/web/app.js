@@ -1237,7 +1237,7 @@ function showValidation(result) {
 async function validateData(showDialog = true) {
   try {
     const result = await apiJson("/api/validate", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tables: state.tables }),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ schemaVersion: state.schemaVersion, formSet: "A", tables: state.tables }),
     });
     if (showDialog) showValidation(result);
     setStatus(result.ok ? `資料格式可匯出（${result.warnings.length} 個提醒）` : `資料有 ${result.errors.length} 個錯誤`, result.ok ? (result.warnings.length ? "warn" : "ok") : "error");
@@ -1252,7 +1252,7 @@ async function exportDataTxt() {
   setStatus("正在驗證並產生 CP950 data.txt…", "warn");
   try {
     const response = await fetch("/api/export", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tables: state.tables }),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ schemaVersion: state.schemaVersion, formSet: "A", tables: state.tables }),
     });
     if (!response.ok) {
       const result = await response.json();

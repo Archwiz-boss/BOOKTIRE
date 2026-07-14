@@ -53,7 +53,10 @@
           <button class="record-button" id="addRecordButton" type="button" title="新增一筆">新增</button>
           <button class="record-button" id="copyRecordButton" type="button" title="複製目前記錄">複製</button>
           <button class="record-button danger" id="deleteRecordButton" type="button" title="刪除目前記錄">刪除</button>
-          <button class="button secondary compact" id="bulkEditButton" type="button">批次輸入</button>
+          <div class="page-actions">
+            <button class="button secondary compact" id="bulkEditButton" type="button">批次輸入</button>
+            <button class="button danger-button compact" id="clearCurrentTableButton" type="button">清空本頁</button>
+          </div>
         </div>
       </section>
 
@@ -142,6 +145,7 @@
       <button class="close-button" data-close-dialog="bulkDialog" type="button" aria-label="關閉">×</button>
     </div>
     <div class="bulk-toolbar">
+      <button class="button secondary" id="bulkToggleAllButton" type="button" aria-pressed="false">全選</button>
       <button class="button secondary" id="bulkAddOneButton" type="button">新增 1 列</button>
       <button class="button secondary" id="bulkAddTenButton" type="button">新增 10 列</button>
       <button class="button secondary" id="bulkDuplicateButton" type="button">複製勾選列</button>
@@ -151,6 +155,24 @@
     <div id="bulkTableArea" class="bulk-table-area"></div>
     <div class="dialog-actions">
       <button class="button primary" data-close-dialog="bulkDialog" type="button">完成</button>
+    </div>
+  </dialog>
+
+  <dialog id="clearTableDialog" class="dialog confirm-dialog" aria-describedby="clearTableMessage">
+    <div class="dialog-head warning-dialog-head">
+      <div>
+        <p class="eyebrow">清除資料警告</p>
+        <h2 id="clearTableDialogTitle">清空目前頁面</h2>
+      </div>
+      <button class="close-button" data-close-dialog="clearTableDialog" type="button" aria-label="關閉">×</button>
+    </div>
+    <div class="confirm-content">
+      <p id="clearTableMessage"></p>
+      <div class="warning-box">此操作只清除目前資料群組，不影響其他頁面。清除後如要復原，請在匯出前重新載入原本的 data.txt。</div>
+    </div>
+    <div class="dialog-actions">
+      <button class="button secondary" data-close-dialog="clearTableDialog" type="button">取消</button>
+      <button class="button danger-button" id="confirmClearTableButton" type="button">確認清空本頁</button>
     </div>
   </dialog>
 

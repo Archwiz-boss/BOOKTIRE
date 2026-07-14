@@ -51,6 +51,17 @@ report = {
     "hasBulkButton": "批次表格" in index,
     "hasSampleButton": "下載範例 CSV／XML" in index,
     "hasSearchablePicker": "optionPickerDialog" in index and "optionPickerSearch" in index,
+    "hasRecentPicker": "optionPickerRecent" in index and "rememberPickerValue" in app_source,
+    "shortOptionsUseNativeSelect": "OPTION_MODAL_THRESHOLD = 5" in app_source and "useModalForOptions" in app_source and "compact-option-select" in app_source,
+    "bulkSelectAll": 'id="bulkToggleAllButton"' in index and "toggleAllBulkRows" in app_source and "syncBulkSelectAllButton" in app_source,
+    "clearPageWarningModal": 'id="clearCurrentTableButton"' in index and 'id="clearTableDialog"' in index and "clearTableData" in app_source,
+    "hasCompactActions": 'id="actionMenu"' in index and 'class="coverage-card"' not in index,
+    "hasCollapsibleSections": "sectionStartsOpen" in app_source and 'id="toggleSectionsButton"' in index,
+    "rawFieldNamesOptIn": 'id="toggleRawFieldsButton"' in index and "body.show-raw .raw-field" in styles,
+    "modalBackdropClose": "closeDialogFromBackdrop" in app_source and 'dialog.dialog' in app_source,
+    "bulkChangesPreserved": "bulkDirty" in app_source and "批次修改已自動保留" in app_source,
+    "stableScrollbarSpace": "overflow-y: scroll" in styles and styles.count("scrollbar-gutter: stable") >= 2,
+    "compactBulkColumns": "bulkColumnClass" in app_source and "minmax(54px, 1fr) 30px" in styles and "min-width: 126px" not in styles,
     "hasParcelCopyButton": "一鍵帶入本次地號" in app_source,
     "hasStairCopyButton": "一鍵帶入本次樓層概要" in app_source,
     "pickerHasFixedHeight": "height: min(430px, 52vh)" in styles,
@@ -67,6 +78,10 @@ report = {
 assert index_status == app_status == styles_status == codebook_status == bootstrap_status == export_status == 200
 assert report["hasBulkButton"] and report["hasSampleButton"]
 assert report["hasSearchablePicker"] and report["hasParcelCopyButton"] and report["hasStairCopyButton"]
+assert report["hasRecentPicker"] and report["shortOptionsUseNativeSelect"] and report["hasCompactActions"] and report["hasCollapsibleSections"] and report["rawFieldNamesOptIn"]
+assert report["bulkSelectAll"] and report["clearPageWarningModal"]
+assert report["modalBackdropClose"] and report["bulkChangesPreserved"] and report["stableScrollbarSpace"]
+assert report["compactBulkColumns"]
 assert report["pickerHasFixedHeight"] and report["legacyDatalistRemoved"]
 assert codebook["source"]["bldcodeRows"] == 22383
 assert len(codebook["officialSections"]) == 1626

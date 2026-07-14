@@ -7,6 +7,7 @@ const C = (name, label, extra = {}) => F(name, label, { kind: "code", ...extra }
 const Y = (name, label, extra = {}) => F(name, label, { kind: "yn", ...extra });
 const M = (name, label, extra = {}) => F(name, label, { multiline: true, ...extra });
 const S = (title, fields, extra = {}) => ({ title, fields, ...extra });
+const OPTION_MODAL_THRESHOLD = 5;
 
 const addressFields = (prefix, title) => [
   C(`${prefix}ADR`, `${title}行政區代碼`, { hint: "報表會依行政區代碼組出縣市／區名。" }),
@@ -345,7 +346,11 @@ const state = {
   sourceRows: [],
   sourceHeaders: [],
   mappings: {},
-  picker: { target: null, options: [], title: "" },
+  picker: { target: null, options: [], title: "", key: "", filteredIndexes: [], cursor: 0 },
+  sectionOpen: {},
+  showRawFields: false,
+  bulkDirty: false,
+  pendingClearTable: "",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -373,6 +378,45 @@ function toast(message, kind = "") {
   item.textContent = message;
   $("#toastRegion").append(item);
   window.setTimeout(() => item.remove(), 4200);
+}
+
+function isDialogBackdropClick(dialog, event) {
+  if (event.target !== dialog) return false;
+  const bounds = dialog.getBoundingClientRect();
+  return event.clientX < bounds.left || event.clientX > bounds.right
+    || event.clientY < bounds.top || event.clientY > bounds.bottom;
+}
+
+function closeDialogFromBackdrop(event) {
+  const dialog = event.currentTarget;
+  if (dialog.open && isDialogBackdropClick(dialog, event)) dialog.close();
+}
+
+function storageGet(key, fallback = "") {
+  try { return typeof localStorage === "undefined" ? fallback : (localStorage.getItem(key) ?? fallback); }
+  catch { return fallback; }
+}
+
+function storageSet(key, value) {
+  try { if (typeof localStorage !== "undefined") localStorage.setItem(key, value); }
+  catch { /* Browser privacy settings may disable local storage. */ }
+}
+
+function pickerRecentValues(key) {
+  if (!key) return [];
+  try {
+    const saved = JSON.parse(storageGet("cpami-picker-recent", "{}"));
+    return Array.isArray(saved[key]) ? saved[key] : [];
+  } catch { return []; }
+}
+
+function rememberPickerValue(key, value) {
+  if (!key || !value) return;
+  let saved = {};
+  try { saved = JSON.parse(storageGet("cpami-picker-recent", "{}")) || {}; }
+  catch { saved = {}; }
+  saved[key] = [value, ...(Array.isArray(saved[key]) ? saved[key] : []).filter((item) => item !== value)].slice(0, 5);
+  storageSet("cpami-picker-recent", JSON.stringify(saved));
 }
 
 function allFields(table) {
@@ -529,6 +573,7 @@ function renderRecordControls() {
   $("#copyRecordButton").disabled = !repeatable || !rows.length;
   $("#deleteRecordButton").disabled = !repeatable || !rows.length;
   $("#bulkEditButton").disabled = !repeatable || !BULK_FIELDS[table];
+  $("#clearCurrentTableButton").disabled = !rows.length;
 }
 
 function pickerOptionsForField(table, field, record) {
@@ -536,39 +581,95 @@ function pickerOptionsForField(table, field, record) {
   return optionsFor(table, field.name, record);
 }
 
-function renderOptionPicker() {
+function useModalForOptions(options) {
+  return options.length > OPTION_MODAL_THRESHOLD;
+}
+
+function renderInlineOptionMarkup(options, value) {
+  const sortedOptions = sortOptionsByName(options);
+  const hasCurrentValue = sortedOptions.some(([code]) => code === value);
+  const currentFallback = value && !hasCurrentValue
+    ? `<option value="${escapeHtml(value)}" selected>目前值：${escapeHtml(value)}</option>`
+    : "";
+  return `<option value="" ${value ? "" : "selected"}>—</option>${currentFallback}${sortedOptions.map(([code, label]) =>
+    `<option value="${escapeHtml(code)}" ${code === value ? "selected" : ""}>${escapeHtml(label)}</option>`
+  ).join("")}`;
+}
+
+function renderOptionPicker(resetCursor = true) {
   const keyword = $("#optionPickerSearch").value.trim().toLocaleLowerCase("zh-Hant");
+  const tokens = keyword.split(/\s+/).filter(Boolean);
   const currentValue = state.picker.target?.value ?? "";
   const filtered = state.picker.options
     .map((option, index) => ({ option, index }))
-    .filter(({ option: [value, label] }) => !keyword || `${label} ${value}`.toLocaleLowerCase("zh-Hant").includes(keyword));
+    .filter(({ option: [value, label] }) => {
+      const haystack = `${label} ${value}`.toLocaleLowerCase("zh-Hant");
+      return tokens.every((token) => haystack.includes(token));
+    });
+  state.picker.filteredIndexes = filtered.map(({ index }) => index);
+  if (resetCursor) {
+    const currentIndex = filtered.findIndex(({ option: [value] }) => value === currentValue);
+    state.picker.cursor = Math.max(0, currentIndex);
+  } else if (state.picker.cursor >= filtered.length) {
+    state.picker.cursor = Math.max(0, filtered.length - 1);
+  }
   $("#optionPickerSummary").textContent = keyword
-    ? `找到 ${filtered.length.toLocaleString()}／${state.picker.options.length.toLocaleString()} 筆；依名稱排序。`
-    : `共 ${state.picker.options.length.toLocaleString()} 筆；依名稱排序。`;
+    ? `${filtered.length.toLocaleString()}／${state.picker.options.length.toLocaleString()} 筆`
+    : `${state.picker.options.length.toLocaleString()} 筆`;
+  const recentIndexes = pickerRecentValues(state.picker.key)
+    .map((value) => state.picker.options.findIndex(([code]) => code === value))
+    .filter((index) => index >= 0);
+  const recent = $("#optionPickerRecent");
+  recent.hidden = Boolean(keyword) || !recentIndexes.length;
+  recent.innerHTML = recent.hidden ? "" : `<span class="recent-label">最近使用</span>${recentIndexes.map((index) => {
+    const [value, label] = state.picker.options[index];
+    return `<button class="recent-option" type="button" data-picker-recent="${index}" title="${escapeHtml(`${label}（${value}）`)}">${escapeHtml(label)}</button>`;
+  }).join("")}`;
   $("#optionPickerList").innerHTML = filtered.length
-    ? filtered.map(({ option: [value, label], index }) => `<button class="picker-option ${value === currentValue ? "active" : ""}" type="button" role="option" aria-selected="${value === currentValue}" data-picker-option="${index}">
+    ? filtered.map(({ option: [value, label], index }, filteredIndex) => `<button class="picker-option ${value === currentValue ? "active" : ""} ${filteredIndex === state.picker.cursor ? "keyboard-focus" : ""}" type="button" role="option" aria-selected="${value === currentValue}" data-picker-option="${index}">
         <span>${escapeHtml(label)}</span><code>${escapeHtml(value)}</code>
       </button>`).join("")
-    : `<div class="picker-empty">沒有符合關鍵字的選項。可清除關鍵字，或先回到表單選擇縣市／行政區。</div>`;
+    : `<div class="picker-empty">找不到符合的選項</div>`;
 }
 
-function openOptionPicker(target, title, options) {
-  state.picker = { target, title, options: sortOptionsByName(options) };
+function openOptionPicker(target, title, options, key = "") {
+  state.picker = { target, title, options: sortOptionsByName(options), key, filteredIndexes: [], cursor: 0 };
   $("#optionPickerTitle").textContent = title;
   $("#optionPickerSearch").value = "";
   renderOptionPicker();
   $("#optionPickerDialog").showModal();
   $("#optionPickerSearch").focus();
+  window.requestAnimationFrame(() => {
+    $("#optionPickerList").querySelector(".keyboard-focus")?.scrollIntoView({ block: "center" });
+  });
 }
 
 function choosePickerValue(value, label = "") {
   const target = state.picker.target;
+  rememberPickerValue(state.picker.key, value);
   $("#optionPickerDialog").close();
   if (!target?.isConnected) return;
   target.value = value;
-  const labelElement = target.closest(".field, td")?.querySelector("[data-picker-selected-label]");
-  if (labelElement) labelElement.textContent = label ? `目前：${label}` : "目前：空白";
+  updatePickerDisplay(target, value, label);
   target.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function updatePickerDisplay(target, value, label = "") {
+  const container = target.closest(".field, td");
+  const labelElement = container?.querySelector("[data-picker-display-label]");
+  const codeElement = container?.querySelector("[data-picker-display-code]");
+  const bulkLabel = container?.querySelector("[data-picker-selected-label]");
+  if (labelElement) labelElement.textContent = label || (value ? "自訂代碼" : "請選擇");
+  if (codeElement) codeElement.textContent = value || "";
+  if (bulkLabel) bulkLabel.textContent = label || (value ? "自訂代碼" : "");
+}
+
+function movePickerCursor(direction) {
+  const count = state.picker.filteredIndexes.length;
+  if (!count) return;
+  state.picker.cursor = (state.picker.cursor + direction + count) % count;
+  renderOptionPicker(false);
+  $("#optionPickerList").querySelector(".keyboard-focus")?.scrollIntoView({ block: "nearest" });
 }
 
 function copyMappedValues(record, pairs) {
@@ -590,31 +691,45 @@ function renderField(field, record, table) {
   const value = record[field.name] ?? "";
   const classes = ["field", field.wide ? "wide" : "", field.full ? "full" : ""].filter(Boolean).join(" ");
   const fieldId = `f-${table}-${field.name}`.replace(/[^a-zA-Z0-9_-]/g, "-");
-  const pickerField = field.kind === "code" || field.kind === "yn";
-  const options = pickerField ? pickerOptionsForField(table, field, record) : [];
+  const optionField = field.kind === "code" || field.kind === "yn";
+  const options = optionField ? pickerOptionsForField(table, field, record) : [];
+  const pickerField = optionField && useModalForOptions(options);
+  const labelFor = pickerField ? `${fieldId}-picker` : fieldId;
   let control;
   if (field.multiline) {
     control = `<textarea id="${fieldId}" data-field="${field.name}" placeholder="${escapeHtml(field.placeholder || "")}">${escapeHtml(value)}</textarea>`;
+  } else if (optionField && !pickerField) {
+    control = `<select class="compact-option-select" id="${fieldId}" data-field="${field.name}" aria-label="${escapeHtml(field.label)}">
+      ${renderInlineOptionMarkup(options, value)}
+    </select>`;
   } else if (pickerField) {
     const selectedLabel = options.find(([code]) => code === value)?.[1] || "";
-    control = `<div class="picker-input-row">
-      <input id="${fieldId}" data-field="${field.name}" value="${escapeHtml(value)}" ${field.kind === "yn" ? "readonly" : ""}
-        ${field.kind === "code" ? 'autocomplete="off"' : ""} placeholder="${escapeHtml(field.placeholder || "")}">
-      <button class="picker-open-button" type="button" data-open-picker="${field.name}" aria-label="選擇${escapeHtml(field.label)}">選擇</button>
-    </div>
-    <small class="picker-selected-label" data-picker-selected-label>${selectedLabel ? `目前：${escapeHtml(selectedLabel)}` : (value ? "目前：自訂代碼" : "目前：空白")}</small>`;
+    const displayLabel = selectedLabel || (value ? "自訂代碼" : (options.length ? "請選擇" : "請先選擇上層資料"));
+    control = `<div class="picker-control">
+      <button class="picker-open-button" id="${fieldId}-picker" type="button" data-open-picker="${field.name}" aria-label="選擇${escapeHtml(field.label)}">
+        <span class="picker-display-label" data-picker-display-label>${escapeHtml(displayLabel)}</span>
+        <code class="picker-display-code" data-picker-display-code>${escapeHtml(value)}</code>
+        <span class="picker-chevron" aria-hidden="true">⌄</span>
+      </button>
+      <input class="picker-code-input" id="${fieldId}" data-field="${field.name}" value="${escapeHtml(value)}" autocomplete="off" aria-label="${escapeHtml(field.label)}原始代碼">
+    </div>`;
   } else {
     control = `<input id="${fieldId}" data-field="${field.name}" value="${escapeHtml(value)}"
       ${field.kind === "number" ? 'inputmode="decimal"' : ""} placeholder="${escapeHtml(field.placeholder || "")}">`;
   }
-  const optionHint = options.length > 8
-    ? `已載入 ${options.length} 筆選項；按「選擇」後可用關鍵字搜尋。`
-    : (options.length ? `可用代碼：${options.map(([code, label]) => `${code}=${label}`).join("；")}` : (pickerField ? "目前沒有可選資料；請先選擇上層縣市或行政區。" : ""));
-  return `<label class="${classes}" data-search="${escapeHtml(`${field.label} ${field.name}`.toLowerCase())}">
-    <span class="field-label"><span>${escapeHtml(field.label)}</span><code class="raw-field">${field.name}</code></span>
+  return `<div class="${classes}" data-search="${escapeHtml(`${field.label} ${field.name}`.toLowerCase())}">
+    <div class="field-label"><label for="${labelFor}">${escapeHtml(field.label)}</label><code class="raw-field">${field.name}</code>${field.hint ? `<button class="field-info" type="button" title="${escapeHtml(field.hint)}" aria-label="${escapeHtml(`${field.label}：${field.hint}`)}">?</button>` : ""}</div>
     ${control}
-    ${(field.hint || optionHint) ? `<small class="field-hint">${escapeHtml(field.hint || optionHint)}</small>` : ""}
-  </label>`;
+  </div>`;
+}
+
+function sectionOpenKey(table, index) {
+  return `${table}.${index}`;
+}
+
+function sectionStartsOpen(table, section, index) {
+  const key = sectionOpenKey(table, index);
+  return Object.hasOwn(state.sectionOpen, key) ? state.sectionOpen[key] : !section.old;
 }
 
 function renderEditor() {
@@ -622,22 +737,27 @@ function renderEditor() {
   const record = currentRecord();
   $("#tableRawName").textContent = state.activeTable;
   $("#tableTitle").textContent = config.label;
-  $("#formChips").innerHTML = config.forms.map((code) => `<span class="chip">${code}</span>`).join("");
+  $("#formChips").innerHTML = `<span class="form-usage" title="${escapeHtml(config.forms.join("、"))}">使用於 ${config.forms.length} 份書表</span>`;
   $("#tableNotice").hidden = !config.notice;
-  $("#tableNotice").textContent = config.notice || "";
+  $("#tableNotice").open = false;
+  $("#tableNoticeText").textContent = config.notice || "";
   $("#emptyState").hidden = Boolean(record);
   $("#editorForm").hidden = !record;
   if (!record) {
     $("#fieldGroups").innerHTML = "";
-    $("#fieldCount").textContent = "0 個實用欄位";
+    $("#fieldCount").textContent = "0 欄";
+    syncSectionToggleButton();
     return;
   }
-  $("#fieldGroups").innerHTML = config.sections.map((section) => `<section class="field-section ${section.old ? "old-section" : ""}">
-    <div class="section-heading"><h3>${escapeHtml(section.title)}</h3>${section.copyCurrent ? `<button class="button secondary compact section-copy-button" type="button" data-copy-current="${section.copyCurrent}">${escapeHtml(section.copyLabel)}</button>` : ""}</div>
-    ${section.note ? `<p class="section-note">${escapeHtml(section.note)}</p>` : ""}
-    <div class="field-grid">${section.fields.map((field) => renderField(field, record, state.activeTable)).join("")}</div>
-  </section>`).join("");
-  $("#fieldCount").textContent = `${allFields(state.activeTable).length} 個實用欄位`;
+  $("#fieldGroups").innerHTML = config.sections.map((section, index) => `<details class="field-section ${section.old ? "old-section" : ""}" data-section-index="${index}" ${sectionStartsOpen(state.activeTable, section, index) ? "open" : ""}>
+    <summary class="section-heading"><h3>${escapeHtml(section.title)}</h3></summary>
+    <div class="section-body">
+      ${section.copyCurrent ? `<div class="section-actions"><button class="button secondary compact section-copy-button" type="button" data-copy-current="${section.copyCurrent}">${escapeHtml(section.copyLabel)}</button></div>` : ""}
+      ${section.note ? `<details class="section-help"><summary>填寫說明</summary><p>${escapeHtml(section.note)}</p></details>` : ""}
+      <div class="field-grid">${section.fields.map((field) => renderField(field, record, state.activeTable)).join("")}</div>
+    </div>
+  </details>`).join("");
+  $("#fieldCount").textContent = `${allFields(state.activeTable).length} 欄`;
   $$("[data-field]").forEach((control) => {
     control.addEventListener("input", handleFieldInput);
     control.addEventListener("change", handleFieldInput);
@@ -645,17 +765,24 @@ function renderEditor() {
   $$("[data-open-picker]").forEach((button) => button.addEventListener("click", () => {
     const field = fieldDefinition(state.activeTable, button.dataset.openPicker);
     const record = currentRecord();
-    const target = button.parentElement.querySelector("[data-field]");
-    openOptionPicker(target, `${field.label} — ${field.name}`, pickerOptionsForField(state.activeTable, field, record));
+    const target = button.closest(".field").querySelector("[data-field]");
+    openOptionPicker(target, field.label, pickerOptionsForField(state.activeTable, field, record), `${state.activeTable}.${field.name}`);
   }));
   $$("[data-copy-current]").forEach((button) => button.addEventListener("click", () => copyCurrentValuesToOld(button.dataset.copyCurrent)));
+  $$(".field-info").forEach((button) => button.addEventListener("click", () => toast(button.title)));
+  $$(".field-section").forEach((section) => section.addEventListener("toggle", () => {
+    state.sectionOpen[sectionOpenKey(state.activeTable, Number(section.dataset.sectionIndex))] = section.open;
+    syncSectionToggleButton();
+  }));
   applyFieldSearch();
+  syncSectionToggleButton();
 }
 
 function renderAll() {
   renderNav();
   renderRecordControls();
   renderEditor();
+  applyRawFieldVisibility();
 }
 
 function handleFieldInput(event) {
@@ -676,15 +803,13 @@ function handleFieldInput(event) {
     if (control !== event.currentTarget && control.value !== (record[control.dataset.field] ?? "")) {
       control.value = record[control.dataset.field] ?? "";
     }
-  });
-  if (event.type === "change") {
-    const definition = fieldDefinition(state.activeTable, field);
+    const definition = fieldDefinition(state.activeTable, control.dataset.field);
     if (["code", "yn"].includes(definition.kind)) {
-      const label = pickerOptionsForField(state.activeTable, definition, record).find(([code]) => code === record[field])?.[1] || "";
-      const labelElement = event.currentTarget.closest(".field")?.querySelector("[data-picker-selected-label]");
-      if (labelElement) labelElement.textContent = label ? `目前：${label}` : (record[field] ? "目前：自訂代碼" : "目前：空白");
+      const pickerValue = record[control.dataset.field] ?? "";
+      const label = pickerOptionsForField(state.activeTable, definition, record).find(([code]) => code === pickerValue)?.[1] || "";
+      updatePickerDisplay(control, pickerValue, label);
     }
-  }
+  });
   setStatus("資料已修改，尚未匯出", "warn");
   if (event.type === "change" && ["BMPAS", "DIST", "DIST_OLD"].includes(field)) renderEditor();
 }
@@ -754,6 +879,39 @@ function deleteRecord() {
   renderAll();
 }
 
+function clearTableData(table) {
+  const repeatable = Boolean(state.bootstrap.tableMeta[table]?.repeatable);
+  state.tables[table] = repeatable ? [] : [blankRecord(table)];
+  return state.tables[table];
+}
+
+function openClearCurrentTableDialog() {
+  const table = state.activeTable;
+  const rows = state.tables[table] || [];
+  if (!rows.length) return;
+  const label = TABLE_CONFIG[table].label;
+  const repeatable = Boolean(state.bootstrap.tableMeta[table]?.repeatable);
+  state.pendingClearTable = table;
+  $("#clearTableDialogTitle").textContent = `清空「${label}」`;
+  $("#clearTableMessage").textContent = repeatable
+    ? `確定要清除這一頁目前的 ${rows.length} 筆資料嗎？`
+    : "確定要清除這一頁所有已填內容嗎？案件的系統連結主鍵會保留。";
+  $("#clearTableDialog").showModal();
+}
+
+function confirmClearCurrentTable() {
+  const table = state.pendingClearTable;
+  if (!table || !TABLE_CONFIG[table]) return;
+  const label = TABLE_CONFIG[table].label;
+  clearTableData(table);
+  state.activeTable = table;
+  state.activeRecord = 0;
+  $("#clearTableDialog").close();
+  renderAll();
+  setStatus(`已清空「${label}」，尚未匯出`, "warn");
+  toast(`已清空「${label}」`);
+}
+
 function fieldDefinition(table, fieldName) {
   return allFields(table).find((field) => field.name === fieldName) || F(fieldName, fieldName);
 }
@@ -772,6 +930,7 @@ function addBulkRows(count) {
   const table = state.activeTable;
   const rows = state.tables[table];
   for (let index = 0; index < count; index += 1) rows.push(blankRecord(table));
+  state.bulkDirty = true;
   normalizeRowMetadata(table);
   renderBulkTable();
   setStatus(`已在 ${table} 新增 ${count} 列`, "warn");
@@ -784,17 +943,30 @@ function renderBulkControl(table, field, record, rowIndex, columnIndex) {
   if (field.multiline || field.name === "DESE") {
     return `<textarea ${common}>${escapeHtml(value)}</textarea>`;
   }
-  const pickerField = field.kind === "code" || field.kind === "yn";
+  const optionField = field.kind === "code" || field.kind === "yn";
+  const options = optionField ? pickerOptionsForField(table, field, record) : [];
+  const pickerField = optionField && useModalForOptions(options);
+  if (optionField && !pickerField) {
+    return `<select class="compact-option-select" id="${controlId}" ${common} aria-label="${escapeHtml(field.label)}">
+      ${renderInlineOptionMarkup(options, value)}
+    </select>`;
+  }
   if (pickerField) {
-    const options = pickerOptionsForField(table, field, record);
     const label = options.find(([code]) => code === value)?.[1] || "";
     return `<div class="bulk-picker-input-row">
-      <input id="${controlId}" ${common} value="${escapeHtml(value)}" ${field.kind === "yn" ? "readonly" : 'autocomplete="off"'}>
-      <button class="bulk-picker-button" type="button" data-open-bulk-picker="${field.name}" data-bulk-picker-row="${rowIndex}" aria-label="選擇${escapeHtml(field.label)}">選擇</button>
+      <input id="${controlId}" ${common} value="${escapeHtml(value)}" autocomplete="off">
+      <button class="bulk-picker-button" type="button" data-open-bulk-picker="${field.name}" data-bulk-picker-row="${rowIndex}" aria-label="選擇${escapeHtml(field.label)}" title="選擇${escapeHtml(field.label)}">⌄</button>
     </div>
-    <small class="bulk-code-label" data-picker-selected-label title="${escapeHtml(label)}">${escapeHtml(label || (value ? "自訂代碼" : "空白"))}</small>`;
+    <small class="bulk-code-label" data-picker-selected-label title="${escapeHtml(label)}">${escapeHtml(label || (value ? "自訂代碼" : ""))}</small>`;
   }
   return `<input id="${controlId}" ${common} value="${escapeHtml(value)}" ${field.kind === "number" ? 'inputmode="decimal"' : ""}>`;
+}
+
+function bulkColumnClass(field) {
+  if (field.multiline || field.name === "DESE") return "bulk-col-long";
+  if (field.kind === "code" || field.kind === "yn") return "bulk-col-code";
+  if (field.kind === "number") return "bulk-col-number";
+  return "bulk-col-text";
 }
 
 function renderBulkTable() {
@@ -804,11 +976,11 @@ function renderBulkTable() {
   const rows = state.tables[table] || [];
   $("#bulkDialogTitle").textContent = `${TABLE_CONFIG[table].label} — 批次表格`;
   $("#bulkTableArea").innerHTML = `<table class="bulk-table">
-    <thead><tr><th>選取</th><th>#</th>${fields.map((field) => `<th title="${field.name}">${escapeHtml(field.label)}<small class="nav-raw">${field.name}</small></th>`).join("")}</tr></thead>
+    <thead><tr><th>選取</th><th>#</th>${fields.map((field) => `<th class="${bulkColumnClass(field)}" title="${field.name}">${escapeHtml(field.label)}<small class="nav-raw">${field.name}</small></th>`).join("")}</tr></thead>
     <tbody>${rows.map((record, rowIndex) => `<tr>
       <td><input type="checkbox" data-bulk-select="${rowIndex}" aria-label="選取第 ${rowIndex + 1} 列"></td>
       <td>${rowIndex + 1}</td>
-      ${fields.map((field, columnIndex) => `<td>${renderBulkControl(table, field, record, rowIndex, columnIndex)}</td>`).join("")}
+      ${fields.map((field, columnIndex) => `<td class="${bulkColumnClass(field)}">${renderBulkControl(table, field, record, rowIndex, columnIndex)}</td>`).join("")}
     </tr>`).join("")}</tbody>
   </table>`;
 
@@ -817,6 +989,7 @@ function renderBulkTable() {
       const row = state.tables[table][Number(control.dataset.bulkRow)];
       row[control.dataset.bulkField] = control.value;
       hydrateDerived(table, row, control.dataset.bulkField);
+      state.bulkDirty = true;
       setStatus("批次表格已修改，尚未匯出", "warn");
       if (event.type === "change" && (codeSpecFor(table, control.dataset.bulkField) || ["DIST", "DIST_OLD"].includes(control.dataset.bulkField))) {
         const area = $("#bulkTableArea");
@@ -834,8 +1007,10 @@ function renderBulkTable() {
     const row = state.tables[table][Number(button.dataset.bulkPickerRow)];
     const field = fieldDefinition(table, button.dataset.openBulkPicker);
     const target = button.parentElement.querySelector("[data-bulk-field]");
-    openOptionPicker(target, `${field.label} — ${field.name}`, pickerOptionsForField(table, field, row));
+    openOptionPicker(target, field.label, pickerOptionsForField(table, field, row), `${table}.${field.name}`);
   }));
+  $$('[data-bulk-select]').forEach((checkbox) => checkbox.addEventListener("change", syncBulkSelectAllButton));
+  syncBulkSelectAllButton();
 }
 
 function parseClipboardMatrix(text) {
@@ -882,6 +1057,7 @@ function handleBulkPaste(event) {
       hydrateDerived(table, target, targetField);
     });
   });
+  state.bulkDirty = true;
   normalizeRowMetadata(table);
   renderBulkTable();
   setStatus(`已從剪貼簿貼上 ${sourceRows.length} 列到 ${table}`, "warn");
@@ -890,6 +1066,23 @@ function handleBulkPaste(event) {
 
 function selectedBulkIndexes() {
   return $$('[data-bulk-select]:checked').map((checkbox) => Number(checkbox.dataset.bulkSelect));
+}
+
+function syncBulkSelectAllButton() {
+  const checkboxes = $$('[data-bulk-select]');
+  const allSelected = checkboxes.length > 0 && checkboxes.every((checkbox) => checkbox.checked);
+  const button = $("#bulkToggleAllButton");
+  button.disabled = !checkboxes.length;
+  button.textContent = allSelected ? "取消全選" : "全選";
+  button.setAttribute("aria-pressed", String(allSelected));
+}
+
+function toggleAllBulkRows() {
+  const checkboxes = $$('[data-bulk-select]');
+  if (!checkboxes.length) return;
+  const selectAll = !checkboxes.every((checkbox) => checkbox.checked);
+  for (const checkbox of checkboxes) checkbox.checked = selectAll;
+  syncBulkSelectAllButton();
 }
 
 function duplicateBulkRows() {
@@ -901,6 +1094,7 @@ function duplicateBulkRows() {
     for (const field of ["識別碼", "CR_DATE", "UP_DATE", "OP_USER"]) if (Object.hasOwn(record, field)) record[field] = "";
     state.tables[table].push(record);
   }
+  state.bulkDirty = true;
   normalizeRowMetadata(table);
   renderBulkTable();
   setStatus(`已複製 ${selected.length} 列`, "warn");
@@ -912,6 +1106,7 @@ function deleteBulkRows() {
   if (!window.confirm(`確定刪除勾選的 ${selected.length} 列？`)) return;
   const table = state.activeTable;
   for (const index of selected.sort((a, b) => b - a)) state.tables[table].splice(index, 1);
+  state.bulkDirty = true;
   normalizeRowMetadata(table);
   renderBulkTable();
   setStatus(`已刪除 ${selected.length} 列`, "warn");
@@ -919,9 +1114,41 @@ function deleteBulkRows() {
 
 function openBulkEditor() {
   if (!BULK_FIELDS[state.activeTable]) return;
+  state.bulkDirty = false;
   if (!currentRows().length) addBulkRows(1);
   renderBulkTable();
   $("#bulkDialog").showModal();
+}
+
+function applyRawFieldVisibility() {
+  document.body.classList.toggle("show-raw", state.showRawFields);
+  const button = $("#toggleRawFieldsButton");
+  button.textContent = state.showRawFields ? "隱藏原始欄名" : "顯示原始欄名";
+  button.setAttribute("aria-pressed", String(state.showRawFields));
+}
+
+function toggleRawFieldVisibility() {
+  state.showRawFields = !state.showRawFields;
+  storageSet("cpami-show-raw-fields", state.showRawFields ? "1" : "0");
+  applyRawFieldVisibility();
+}
+
+function syncSectionToggleButton() {
+  const sections = $$(".field-section").filter((section) => !section.hidden);
+  const button = $("#toggleSectionsButton");
+  button.disabled = !sections.length;
+  button.textContent = sections.some((section) => section.open) ? "全部收合" : "全部展開";
+}
+
+function toggleAllSections() {
+  const sections = $$(".field-section").filter((section) => !section.hidden);
+  if (!sections.length) return;
+  const open = !sections.some((section) => section.open);
+  for (const section of sections) {
+    section.open = open;
+    state.sectionOpen[sectionOpenKey(state.activeTable, Number(section.dataset.sectionIndex))] = open;
+  }
+  syncSectionToggleButton();
 }
 
 function applyFieldSearch() {
@@ -935,8 +1162,13 @@ function applyFieldSearch() {
   $$(".field-section").forEach((section) => {
     const hasVisible = section.querySelector(".field[data-search]:not([hidden])");
     section.hidden = !hasVisible;
+    if (query && hasVisible) section.open = true;
   });
-  if (currentRecord()) $("#fieldCount").textContent = `${visible}／${allFields(state.activeTable).length} 個實用欄位`;
+  if (currentRecord()) {
+    const total = allFields(state.activeTable).length;
+    $("#fieldCount").textContent = query ? `${visible}／${total} 欄` : `${total} 欄`;
+  }
+  syncSectionToggleButton();
 }
 
 async function apiJson(path, options = {}) {
@@ -1329,12 +1561,12 @@ async function bootstrap() {
     state.bootstrap = data;
     state.codebook = codebook;
     state.tables = deepClone(data.tables);
+    state.showRawFields = storageGet("cpami-show-raw-fields") === "1";
     const tableOptions = Object.entries(TABLE_CONFIG).map(([table, config]) => `<option value="${table}">${escapeHtml(config.label)} — ${table}</option>`).join("");
     $("#targetTableSelect").innerHTML = tableOptions;
     $("#sampleTableSelect").innerHTML = tableOptions;
     renderAll();
-    const dropdownRows = codebook.source.bldcodeRows + (codebook.source.taichungSections?.rows || 0);
-    setStatus(`格式模板已就緒：${data.tableOrder.length} 表、${Object.values(data.fieldOrder).reduce((sum, fields) => sum + fields.length, 0)} 欄；下拉代碼 ${dropdownRows.toLocaleString()} 筆`, "ok");
+    setStatus("資料已就緒，可以開始編輯", "ok");
   } catch (error) {
     setStatus("無法連接本機格式服務", "error");
     toast(error.message, "error");
@@ -1349,11 +1581,16 @@ $("#addRecordButton").addEventListener("click", () => addRecord(false));
 $("#copyRecordButton").addEventListener("click", () => addRecord(true));
 $("#deleteRecordButton").addEventListener("click", deleteRecord);
 $("#bulkEditButton").addEventListener("click", openBulkEditor);
+$("#clearCurrentTableButton").addEventListener("click", openClearCurrentTableDialog);
+$("#confirmClearTableButton").addEventListener("click", confirmClearCurrentTable);
+$("#bulkToggleAllButton").addEventListener("click", toggleAllBulkRows);
 $("#bulkAddOneButton").addEventListener("click", () => addBulkRows(1));
 $("#bulkAddTenButton").addEventListener("click", () => addBulkRows(10));
 $("#bulkDuplicateButton").addEventListener("click", duplicateBulkRows);
 $("#bulkDeleteButton").addEventListener("click", deleteBulkRows);
 $("#fieldSearch").addEventListener("input", applyFieldSearch);
+$("#toggleSectionsButton").addEventListener("click", toggleAllSections);
+$("#toggleRawFieldsButton").addEventListener("click", toggleRawFieldVisibility);
 $("#validateButton").addEventListener("click", () => validateData(true));
 $("#exportButton").addEventListener("click", exportDataTxt);
 $("#openConvertButton").addEventListener("click", () => {
@@ -1377,7 +1614,27 @@ $("#targetTableSelect").addEventListener("change", () => {
   renderMappingTable();
 });
 $("#applyMappingButton").addEventListener("click", applyMapping);
-$("#optionPickerSearch").addEventListener("input", renderOptionPicker);
+$("#optionPickerSearch").addEventListener("input", () => renderOptionPicker(true));
+$("#optionPickerSearch").addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    movePickerCursor(event.key === "ArrowDown" ? 1 : -1);
+  } else if (event.key === "Enter") {
+    event.preventDefault();
+    const optionIndex = state.picker.filteredIndexes[state.picker.cursor];
+    const option = state.picker.options[optionIndex];
+    if (option) choosePickerValue(option[0], option[1]);
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    $("#optionPickerDialog").close();
+  }
+});
+$("#optionPickerRecent").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-picker-recent]");
+  if (!button) return;
+  const option = state.picker.options[Number(button.dataset.pickerRecent)];
+  if (option) choosePickerValue(option[0], option[1]);
+});
 $("#optionPickerList").addEventListener("click", (event) => {
   const button = event.target.closest("[data-picker-option]");
   if (!button) return;
@@ -1386,11 +1643,23 @@ $("#optionPickerList").addEventListener("click", (event) => {
 });
 $("#clearPickerButton").addEventListener("click", () => choosePickerValue("", ""));
 $("#optionPickerDialog").addEventListener("close", () => { state.picker.target = null; });
+$("#clearTableDialog").addEventListener("close", () => { state.pendingClearTable = ""; });
+$$("dialog.dialog").forEach((dialog) => dialog.addEventListener("click", closeDialogFromBackdrop));
 $$('[data-close-dialog]').forEach((button) => button.addEventListener("click", () => $(`#${button.dataset.closeDialog}`).close()));
 $("#bulkDialog").addEventListener("close", () => {
+  const savedChanges = state.bulkDirty;
   normalizeRowMetadata(state.activeTable);
   state.activeRecord = Math.min(state.activeRecord, Math.max(0, currentRows().length - 1));
   renderAll();
+  state.bulkDirty = false;
+  if (savedChanges) toast("批次修改已自動保留");
+});
+for (const id of ["newCaseButton", "openSamplesButton", "validateButton"]) {
+  $(`#${id}`).addEventListener("click", () => { $("#actionMenu").open = false; });
+}
+document.addEventListener("click", (event) => {
+  const menu = $("#actionMenu");
+  if (menu.open && !event.target.closest("#actionMenu")) menu.open = false;
 });
 
 bootstrap();

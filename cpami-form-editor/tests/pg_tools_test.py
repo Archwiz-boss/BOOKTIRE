@@ -142,7 +142,10 @@ class PgToolsOfflineTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn(f'"schema_version": "{schema["schemaVersion"]}"', result.stdout)
         self.assertIn('"payload": "13 表／18 筆記錄（內容不顯示）"', result.stdout)
-        self.assertIn('"extra_payload": "4 擴充表／1 筆記錄（內容不顯示）"', result.stdout)
+        self.assertIn(
+            f'"extra_payload": "{len(schema["extraTableOrder"])} 擴充表／1 筆記錄（內容不顯示）"',
+            result.stdout,
+        )
 
     def test_pg_export_payload_roundtrip_without_database(self) -> None:
         schema = load_schema(SCHEMA_PATH)

@@ -24,6 +24,19 @@ FIXTURE_ROWS: dict[str, list[dict[str, str]]] = {
             "BUILDING_CATEGORY": "01",
             "APPLY_TYPE": "A11-1",
             "BUILDING_NAME": "範例集合住宅新建工程",
+            "LICENSE_USE": "範例使照字第00001號",
+            "IDENTIFY_LICE_DATE_USE": "1150601",
+            "RECEIVE_LICE_DATE_USE": "1150605",
+            "CHG_EXP": "2",
+            "CHG_PRIN": "2",
+            "CHG_PRIN_DESC": "僅規定項目檢討",
+            "DOC1": "Y",
+            "DOC2": "Y",
+            "DOC3": "N",
+            "DOC4": "N",
+            "LAND_GET_TIME": "2",
+            "FARM_BUILD": "1",
+            "FARM_MEMO": "虛構農舍管制範例",
         }
     ],
     "BM_TEC": [
@@ -43,6 +56,7 @@ FIXTURE_ROWS: dict[str, list[dict[str, str]]] = {
             "ROAD_NO2": "1",
             "TOT_AREA": "600.5",
             "USE_AREA": "600.5",
+            "LOCATED": "Y",
         },
         {
             "DIST": "436",
@@ -51,6 +65,7 @@ FIXTURE_ROWS: dict[str, list[dict[str, str]]] = {
             "ROAD_NO2": "2",
             "TOT_AREA": "399.5",
             "USE_AREA": "399.5",
+            "LOCATED": "N",
         },
     ],
     "BMSLANOWNER": [

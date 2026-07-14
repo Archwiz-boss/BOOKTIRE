@@ -9,14 +9,14 @@
 | 事實 | 對接的意涵 |
 |---|---|
 | 一份 `data.txt` = 一個案件：13 表、596 欄、固定欄序，值全部是字串 | 資料庫要保真字串語意（前導零、空字串 vs 0），不能貿然轉型 |
-| 伺服器啟動時以根目錄「真實案件」`data.txt` 當格式模板（`TEMPLATE`），沒有它就無法啟動 | 格式結構（schema）與案件內容（data）目前綁死，必須先拆開 |
-| 解析／驗證／序列化都在 `server.py` 的純函式（`parse_data_txt_bytes` 等），但和 HTTP handler 同檔 | 抽成獨立模組後，內部系統可直接 import 同一套格式引擎 |
+| 伺服器以版控內 schema 啟動；根目錄 `data.txt` 只作可選初始案件 | 格式結構與案件內容已拆離，無真實案件也能進入空案件模式 |
+| 解析／驗證／序列化集中在標準庫模組 `cpami_core.py` | 內部系統可直接 import 同一套格式引擎，不需經 HTTP |
 | 匯出有位元組級 roundtrip 測試保證 | 這是對接後也必須維持的最高驗收標準 |
 | `web/codebook.json`：43 種 CODE_TYPE、22,383 筆舊代碼＋1,626 筆官方地段 | 內部系統要查代碼名稱時，這份就是來源，可直接落庫 |
 | `ALLRPT` 代碼類型收錄全部書表目錄（A／B／C／D／E 系列共 109 筆） | 書表組擴充與 DB 的 `form_set` 欄位都以它為準 |
-| A 系列 22 份書表用 13 表中的 11 表；B 系列已開放 `BM_TEC`、`BMSSC` 與 13 表外擴充資料 | DB payload 必須同時容納完整 13 表與 versioned `extraTables` |
+| A／B／C／D 書表組皆已開放；C 系列另需 `C21_3`、`BMELVTR` 兩個 13 表外群組 | DB payload 必須同時容納完整 13 表與 versioned `extraTables` |
 | 部分書表資料不在 data.txt 內（`BMSNEBER`、`BMSROAD`、`BMSP01_11_2_2`、`BMSLANOWNER1` 等舊程式暫存表） | DB 模型要預留「擴充資料」空間，但實際格式待研究決策 |
-| 根目錄 `data.txt` 含真實個資，目前 untracked 但**尚未列入 .gitignore** | 對接前必須先處理（P0） |
+| 根目錄 `data.txt` 與 `cpami/` 含真實個資／第三方程式，已由根目錄 `.gitignore` 排除 | 版控與測試只使用結構 schema 及全虛構 fixture |
 
 ## 2. 對接總策略
 
@@ -137,8 +137,8 @@ CROSS JOIN LATERAL jsonb_array_elements(d.payload->'tables'->'BMSLAN') AS r;
 
 ```json
 {
-  "schemaVersion": "2026-07-14.1",
-  "formSet": "B",
+  "schemaVersion": "2026-07-14.2",
+  "formSet": "C",
   "tables": {
     "BMSBASE":  [ { "INDEX_KEY": "1150101120000", "BMPAS": "I80", "...": "..." } ],
     "BM_TEC":   [],
@@ -149,7 +149,9 @@ CROSS JOIN LATERAL jsonb_array_elements(d.payload->'tables'->'BMSLAN') AS r;
     "BMSROAD":  [ { "INDEX_KEY": "1150101120000", "person_seq": "1", "ROAD_SEC": "範例路", "...": "..." } ],
     "BMSCHK":   [],
     "BMSSCRP":  [],
-    "RPTPHOTO": []
+    "RPTPHOTO": [],
+    "C21_3":   [ { "Index_key": "1150101120000", "Rpt_Seq": "001", "Rpt_Item": "【1.防火區劃】", "Rpt_Data": "符合規定" } ],
+    "BMELVTR":  []
   }
 }
 ```
@@ -162,7 +164,7 @@ CROSS JOIN LATERAL jsonb_array_elements(d.payload->'tables'->'BMSLAN') AS r;
 4. `formSet` 是文件標記（預設 `"A"`），不影響 13 表內容的完整性。
 5. 相容性：`/api/validate`、`/api/export` 同時接受舊格式 `{"tables": ...}`（視為 `formSet:"A"`、版本＝目前版本）。
 6. `cpami_case_documents.payload` 存 `{"tables": ..., "extraTables": ...}`；`schemaVersion`、`formSet` 升為欄位。
-7. schema `2026-07-14.1` 起，payload 同時保存 `tables` 與 `extraTables`。`extraTables` 的四個群組由 `schema/case_extension_schema.json` 定義；舊 data.txt 匯入時四組皆為空陣列。
+7. schema `2026-07-14.2` 的 `extraTables` 由 `schema/case_extension_schema.json` 定義，共 `BMSROAD/BMSCHK/BMSSCRP/RPTPHOTO/C21_3/BMELVTR` 六組；舊 data.txt 匯入時六組皆為空陣列。
 8. data.txt 匯出只序列化 `tables`，但仍必須完整輸出原 13 表、596 欄；未使用的子表會具體化為一筆完整欄序的空白記錄，讓稀疏案件也能重新匯入。`extraTables` 不得硬塞進舊格式。完整資料交換改用案件 JSON 或資料庫 payload。
 
 ## 5. 預備工項（對應 `docs/CODEX_PROMPTS.md`）
@@ -200,5 +202,5 @@ POST /api/cases/{caseId}/export → data.txt（同 /api/export 語意）
 - **編碼**：PostgreSQL 端一律 UTF-8；「CP950 可編碼性」是應用層驗證（`cpami_core`），存草稿可以容忍違規、匯出必須擋下——與現行編輯器行為一致。
 - **個資**：入庫後 `payload` 含身分證字號等個資。內部系統要處理存取控制與備份加密；編輯器現有的一次性權杖只夠單機情境，多人使用時認證交給內部系統（SSO／反向代理），不要在本專案自造帳號系統。
 - **INDEX_KEY 撞號**：見 §3.4，任何以 INDEX_KEY 當唯一鍵的捷徑都會在多來源匯入時爆炸。
-- **schema 演進**：B 系列已在 `2026-07-14.1` 納入 `BMSROAD/BMSCHK/BMSSCRP/RPTPHOTO`。之後 C／D 若再增加 13 表外資料，需同步修改案件擴充 schema 並升 `schemaVersion`；舊版文件保留原版本號不回填，`pg_import` 拒收不相符版本。
+- **schema 演進**：B 系列在 `2026-07-14.1` 納入 `BMSROAD/BMSCHK/BMSSCRP/RPTPHOTO`；C／D 在 `2026-07-14.2` 納入 `C21_3/BMELVTR`。之後若再增加 13 表外資料，需同步修改案件擴充 schema 並升 `schemaVersion`；舊版文件保留原版本號不回填，`pg_import` 拒收不相符版本。
 - **roundtrip 不可退讓**：任何入庫→出庫路徑都要能通過與現行相同的位元組級測試；這是驗證整條管線沒有偷改資料的唯一防線。

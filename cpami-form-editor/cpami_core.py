@@ -126,6 +126,7 @@ EXTRA_NUMERIC_FIELDS = {
         "PEO_PLAIN_DATE",
     },
     "RPTPHOTO": {"PERSON_SEQ", "FILE_SIZE"},
+    "BMELVTR": {"PERSON_SEQ", "CHECK_YEAR"},
 }
 
 
@@ -421,13 +422,16 @@ def prepare_extra_tables(
                 for field in schema["extraFieldOrder"][table]
             }
             if fill_defaults:
-                if "INDEX_KEY" in canonical:
-                    canonical["INDEX_KEY"] = index_key
+                for key_field in ("INDEX_KEY", "Index_key", "index_key"):
+                    if key_field in canonical:
+                        canonical[key_field] = index_key
                 for sequence_field in ("person_seq", "Person_seq", "PERSON_SEQ"):
                     if sequence_field in canonical and not canonical[sequence_field].strip():
                         canonical[sequence_field] = str(row_index)
                 if "SPOKESMAN" in canonical and not canonical["SPOKESMAN"].strip():
                     canonical["SPOKESMAN"] = "Y" if row_index == 1 else "N"
+                if table == "C21_3" and not canonical["Rpt_FmName"].strip():
+                    canonical["Rpt_FmName"] = "C21-3"
             canonical_rows.append(canonical)
         result[table] = canonical_rows
     return result
@@ -551,18 +555,36 @@ def validate_extra_tables(
         seen_sequences: set[str] = set()
         for row_index, row in enumerate(rows, start=1):
             prefix = f"{table} 第 {row_index} 筆"
-            if index_key and row.get("INDEX_KEY", "") != index_key:
+            row_key = next(
+                (
+                    row.get(key_field, "")
+                    for key_field in ("INDEX_KEY", "Index_key", "index_key")
+                    if key_field in row
+                ),
+                "",
+            )
+            if index_key and row_key != index_key:
                 warnings.append(f"{prefix} INDEX_KEY 與 BMSBASE 不一致。")
-            sequence = row.get(
-                "person_seq", row.get("Person_seq", row.get("PERSON_SEQ", ""))
-            ).strip()
-            if not sequence:
-                warnings.append(f"{prefix} 缺少 PERSON_SEQ；儲存完整案件時會依列序補值。")
-            elif not POSITIVE_INTEGER_RE.fullmatch(sequence):
-                warnings.append(f"{prefix} PERSON_SEQ 建議使用正整數，目前為「{sequence}」。")
-            elif sequence in seen_sequences:
-                warnings.append(f"{table} 的 PERSON_SEQ={sequence} 重複。")
-            seen_sequences.add(sequence)
+            if table == "C21_3":
+                sequence = row.get("Rpt_Seq", "").strip()
+                if not sequence:
+                    warnings.append(f"{prefix} 缺少 Rpt_Seq 檢討項目代碼。")
+                elif not re.fullmatch(r"\d{3}", sequence):
+                    warnings.append(f"{prefix} Rpt_Seq 建議使用 3 碼代碼，目前為「{sequence}」。")
+                elif sequence in seen_sequences:
+                    warnings.append(f"{table} 的 Rpt_Seq={sequence} 重複。")
+                seen_sequences.add(sequence)
+            else:
+                sequence = row.get(
+                    "person_seq", row.get("Person_seq", row.get("PERSON_SEQ", ""))
+                ).strip()
+                if not sequence:
+                    warnings.append(f"{prefix} 缺少 PERSON_SEQ；儲存完整案件時會依列序補值。")
+                elif not POSITIVE_INTEGER_RE.fullmatch(sequence):
+                    warnings.append(f"{prefix} PERSON_SEQ 建議使用正整數，目前為「{sequence}」。")
+                elif sequence in seen_sequences:
+                    warnings.append(f"{table} 的 PERSON_SEQ={sequence} 重複。")
+                seen_sequences.add(sequence)
 
             for field in EXTRA_NUMERIC_FIELDS.get(table, set()):
                 value = row.get(field, "").strip()
@@ -578,6 +600,8 @@ def validate_extra_tables(
 
             if table == "BMSCHK" and row.get("CHK_Item_code", "").strip() and not row.get("CHK_Item", "").strip():
                 warnings.append(f"{prefix} 已填 CHK_Item_code，但 CHK_Item 顯示名稱空白。")
+            if table == "C21_3" and row.get("Rpt_Seq", "").strip() and not row.get("Rpt_Item", "").strip():
+                warnings.append(f"{prefix} 已填 Rpt_Seq，但 Rpt_Item 檢討項目名稱空白。")
             if table == "RPTPHOTO" and row.get("barcode", ""):
                 try:
                     base64.b64decode(row["barcode"], validate=True)

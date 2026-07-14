@@ -110,11 +110,11 @@ class CpamiCoreTest(unittest.TestCase):
     def test_case_extension_schema_and_roundtrip_boundary(self) -> None:
         self.assertEqual(
             self.schema["extraTableOrder"],
-            ["BMSROAD", "BMSCHK", "BMSSCRP", "RPTPHOTO"],
+            ["BMSROAD", "BMSCHK", "BMSSCRP", "RPTPHOTO", "C21_3", "BMELVTR"],
         )
         self.assertEqual(
             sum(len(fields) for fields in self.schema["extraFieldOrder"].values()),
-            79,
+            110,
         )
         envelope = core.prepare_case_envelope(
             {
@@ -132,7 +132,26 @@ class CpamiCoreTest(unittest.TestCase):
                             "LENGTH": "20",
                             "WIDE": "8",
                         }
-                    ]
+                    ],
+                    "C21_3": [
+                        {
+                            "Index_key": "1150101120000",
+                            "Rpt_FmName": "C21-3",
+                            "Rpt_Seq": "001",
+                            "Rpt_Item": "【1.防火區劃】",
+                            "Rpt_Data": "符合規定",
+                        }
+                    ],
+                    "BMELVTR": [
+                        {
+                            "INDEX_KEY": "1150101120000",
+                            "PERSON_SEQ": "1",
+                            "PAKENO": "E01",
+                            "CHECK_YEAR": "115",
+                            "ELEV_USE": "B",
+                            "MFT_NAME": "範例電梯股份有限公司",
+                        }
+                    ],
                 },
             },
             self.schema,
@@ -141,9 +160,27 @@ class CpamiCoreTest(unittest.TestCase):
         self.assertEqual(envelope["formSet"], "B")
         self.assertEqual(envelope["extraTables"]["BMSROAD"][0]["ROAD_SEC"], "範例路")
         self.assertIn("\n", envelope["extraTables"]["BMSROAD"][0]["MEMO"])
+        self.assertEqual(envelope["extraTables"]["C21_3"][0]["Rpt_Seq"], "001")
+        self.assertEqual(envelope["extraTables"]["BMELVTR"][0]["ELEV_USE"], "B")
         self.assertEqual(
             core.serialize_tables(envelope["tables"], self.schema), self.fixture
         )
+
+    def test_cd_extension_defaults_use_legacy_key_casing(self) -> None:
+        envelope = core.prepare_case_envelope(
+            {
+                "schemaVersion": self.schema["schemaVersion"],
+                "formSet": "C",
+                "tables": self.fresh_tables(),
+                "extraTables": {"C21_3": [{}], "BMELVTR": [{}]},
+            },
+            self.schema,
+            fill_defaults=True,
+        )
+        self.assertEqual(envelope["extraTables"]["C21_3"][0]["Index_key"], "1150101120000")
+        self.assertEqual(envelope["extraTables"]["C21_3"][0]["Rpt_FmName"], "C21-3")
+        self.assertEqual(envelope["extraTables"]["BMELVTR"][0]["INDEX_KEY"], "1150101120000")
+        self.assertEqual(envelope["extraTables"]["BMELVTR"][0]["PERSON_SEQ"], "1")
 
     def test_extra_table_quality_issues_are_warnings(self) -> None:
         envelope = core.prepare_case_envelope(
@@ -169,6 +206,21 @@ class CpamiCoreTest(unittest.TestCase):
                             "barcode": "不是Base64",
                         }
                     ],
+                    "C21_3": [
+                        {
+                            "Index_key": "1150101120000",
+                            "Rpt_Seq": "第一項",
+                            "Rpt_Item": "",
+                        }
+                    ],
+                    "BMELVTR": [
+                        {
+                            "INDEX_KEY": "1150101120000",
+                            "PERSON_SEQ": "1",
+                            "CHECK_YEAR": "一一五",
+                            "CHECK_DATE": "明天",
+                        }
+                    ],
                 },
             },
             self.schema,
@@ -179,6 +231,9 @@ class CpamiCoreTest(unittest.TestCase):
         self.assertTrue(any("NET_SEQ" in warning for warning in report["warnings"]))
         self.assertTrue(any("CHK_Item" in warning for warning in report["warnings"]))
         self.assertTrue(any("Base64" in warning for warning in report["warnings"]))
+        self.assertTrue(any("Rpt_Seq" in warning for warning in report["warnings"]))
+        self.assertTrue(any("Rpt_Item" in warning for warning in report["warnings"]))
+        self.assertTrue(any("CHECK_YEAR" in warning for warning in report["warnings"]))
         self.assertEqual(report["extraCounts"]["BMSCHK"], 1)
 
     def test_case_json_can_preserve_data_txt_unsafe_draft_text(self) -> None:

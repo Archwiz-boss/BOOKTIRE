@@ -11,7 +11,7 @@ from pathlib import Path
 APP_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SOURCE = APP_ROOT.parent / "data.txt"
 DEFAULT_OUTPUT = APP_ROOT / "schema" / "data_txt_schema.json"
-SCHEMA_VERSION = "2026-07-14.1"
+SCHEMA_VERSION = "2026-07-14.2"
 
 if str(APP_ROOT) not in sys.path:
     sys.path.insert(0, str(APP_ROOT))

@@ -1,10 +1,12 @@
 {
-  "schemaVersion": "2026-07-14.1",
+  "schemaVersion": "2026-07-14.2",
   "extraTableOrder": [
     "BMSROAD",
     "BMSCHK",
     "BMSSCRP",
-    "RPTPHOTO"
+    "RPTPHOTO",
+    "C21_3",
+    "BMELVTR"
   ],
   "extraFieldOrder": {
     "BMSROAD": [
@@ -93,6 +95,41 @@
       "barcode",
       "CR_DATE",
       "MEMO"
+    ],
+    "C21_3": [
+      "Index_key",
+      "Rpt_FmName",
+      "Rpt_Seq",
+      "Rpt_Item",
+      "Rpt_Data",
+      "ID"
+    ],
+    "BMELVTR": [
+      "識別碼",
+      "INDEX_KEY",
+      "PERSON_SEQ",
+      "CMEPAS",
+      "CMENUM",
+      "PAKENO",
+      "CHECK_YEAR",
+      "CMENAM",
+      "BUILD_NAME",
+      "BUILD_ADDR",
+      "CHECK_RESULT",
+      "USE_LICENSE",
+      "CHECK_DATE",
+      "VALID_DATE",
+      "FACILITY_NO",
+      "FACILITY_SCALE",
+      "ELEV_USE",
+      "MFT_NAME",
+      "MFT_NO",
+      "CHECK_MAN_NO",
+      "CHECK_MAN_NAME",
+      "LIC_NUM",
+      "CR_DATE",
+      "UP_DATE",
+      "OP_USER"
     ]
   },
   "extraTableMeta": {
@@ -115,6 +152,16 @@
       "label": "施工照片／附件",
       "repeatable": true,
       "source": "FastReport RptPhoto"
+    },
+    "C21_3": {
+      "label": "變更使用檢討項目",
+      "repeatable": true,
+      "source": "ARCH2016.exe runtime dataset"
+    },
+    "BMELVTR": {
+      "label": "昇降與機械停車設備",
+      "repeatable": true,
+      "source": "Build.mdb"
     }
   }
 }

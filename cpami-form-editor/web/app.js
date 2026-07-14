@@ -33,7 +33,7 @@ const oldAddressFields = (prefix, title) => addressFields(prefix, title).map((fi
 const TABLE_CONFIG = {
   BMSBASE: {
     label: "案件主檔／申請書總表",
-    forms: ["A11-1", "A11-2", "A11-2-2", "A11-3", "A11-4", "A11-5", "A11-6", "A12-2", "A12-4", "A12-4-2", "A12-5", "A13-1", "A13-2", "A13-3", "A13-10", "A21-1", "A21-4", "A23-1", "A31-1", "A31-4", "A31-5", "A32-2", "B11-1", "B11-2", "B11-3", "B11-4", "B12-1", "B13-1", "B13-2", "B13-2-2", "B13-3", "B13-4", "B13-5", "B13-6", "B21-1", "B21-2", "B14-1", "B14-3", "B14-4", "B14-5"],
+    forms: ["A11-1", "A11-2", "A11-2-2", "A11-3", "A11-4", "A11-5", "A11-6", "A12-2", "A12-4", "A12-4-2", "A12-5", "A13-1", "A13-2", "A13-3", "A13-10", "A21-1", "A21-4", "A23-1", "A31-1", "A31-4", "A31-5", "A32-2", "B11-1", "B11-2", "B11-3", "B11-4", "B12-1", "B13-1", "B13-2", "B13-2-2", "B13-3", "B13-4", "B13-5", "B13-6", "B21-1", "B21-2", "B14-1", "B14-3", "B14-4", "B14-5", "C11-1", "C11-2", "C11-2-2", "C12-1", "C21-1", "C21-2", "C21-3", "C21-4", "C22-1", "C22-2", "C22-3", "C22-4", "C22-5", "D11-1", "D11-2", "D13-1", "F 專業技師簽證", "H 農舍管制"],
     notice: "BMSBASE 是全案唯一主檔。INDEX_KEY 會同步到所有子表；報表上的主管機關、工程類別、構造及用途名稱，多半由這裡的代碼組成。",
     sections: [
       S("案件識別", [
@@ -60,6 +60,15 @@ const TABLE_CONFIG = {
         M("LICENSE_LINK", "執照連結文字", { full: true }), M("P01_LINK", "起造人連結文字", { full: true }),
         M("LAN_LINK", "地號連結文字", { full: true }), M("ADDR_LINK", "地址連結文字", { full: true }),
       ], { formSets: ["B"], note: "B12-1 直接顯示的組合文字；只在需要沿用舊系統已組好的文字時填寫。" }),
+      S("使用執照與變更使用", [
+        F("LICENSE_USE", "使用執照字號", { wide: true }), D("IDENTIFY_LICE_DATE_USE", "使用執照核發日期"), D("RECEIVE_LICE_DATE_USE", "使用執照領照日期"),
+        C("CHG_EXP", "變更使用範圍"), C("CHG_PRIN", "變更使用檢討原則"), F("CHG_PRIN_DESC", "檢討原則顯示文字", { wide: true }),
+        Y("DOC1", "檢附檢討項目簽證表"), Y("DOC2", "檢附室內裝修圖說"), Y("DOC3", "檢附結構計算書"), Y("DOC4", "檢附設備圖說"),
+        C("LAW_02", "變更使用法規版本"), F("LAW_02_DOC", "法規依據／公文", { wide: true }), M("OTHERS_MEMO", "其他變更使用說明", { full: true }),
+      ], { formSets: ["C"], note: "C21、C22 系列使用；代碼欄選取後會保留舊系統原始代碼。" }),
+      S("農舍管制", [
+        D("IDENTIFY_LICE_OLD_DATE", "原執照核發日期"), C("LAND_GET_TIME", "農地取得時點"), C("FARM_BUILD", "農舍興建方式"), M("FARM_MEMO", "農舍管制備註", { full: true }),
+      ], { formSets: ["D"], note: "H 系列農舍管制註記清冊使用；基地是否為農舍坐落地請在地號頁填 LOCATED。" }),
       S("基地與土地使用分區", [
         N("BASE_AREA_ARC", "基地騎樓地等面積（㎡）"), N("BASE_AREA_SHRINK", "基地退縮面積（㎡）"),
         N("BASE_AREA_OTHER", "基地其他面積（㎡）"), N("BASE_AREA_PURPOSE", "基地特定用途面積（㎡）"),
@@ -94,7 +103,7 @@ const TABLE_CONFIG = {
   },
   BMSLAN: {
     label: "基地地號",
-    forms: ["A11-1", "A12-2", "A12-4", "A12-5", "A21-1", "A31-1", "A32-2", "B11-1", "B11-2", "B13-1", "B13-3", "B13-5", "B21-1", "B14-1"],
+    forms: ["A11-1", "A12-2", "A12-4", "A12-5", "A21-1", "A31-1", "A32-2", "B11-1", "B11-2", "B13-1", "B13-3", "B13-5", "B21-1", "B14-1", "C11-1", "C21-1", "C22-1", "C22-2", "C22-3", "C22-4", "D11-1", "D13-1", "F 專業技師簽證", "H 農舍管制"],
     notice: "一筆地號一列。母號與子號一定要分欄，不要先合成「875-1」再寫進 ROAD_NO1。",
     sections: [
       S("本次地號", [
@@ -111,7 +120,7 @@ const TABLE_CONFIG = {
   },
   BMSLANOWNER: {
     label: "土地所有權人",
-    forms: ["A12-4"],
+    forms: ["A12-4", "H 農舍管制註記清冊（異動書）"],
     notice: "這不是單純的所有權人名冊，而是「地號 × 所有權人」關係；同一人有多筆地號時需建立多列。",
     sections: [
       S("地號關聯", [C("DIST", "行政區代碼"), C("SECTION", "地段代碼"), F("ROAD_NO1", "地號母號"), F("ROAD_NO2", "地號子號")]),
@@ -124,13 +133,13 @@ const TABLE_CONFIG = {
   },
   BMSMEMO: {
     label: "案件備註",
-    forms: ["A11-1", "A21-1", "A31-1", "B11-2", "B13-1", "B13-3", "B13-5", "B21-1"],
+    forms: ["A11-1", "A21-1", "A31-1", "B11-2", "B13-1", "B13-3", "B13-5", "B21-1", "C11-1", "C21-1", "C21-2", "C22-3", "D11-1"],
     notice: "備註代碼、代碼名稱與實際全文要一起填。沒有對應代碼的自由備註可讓 MEMO_SEQ／NAME 留白，只填 DESE。",
     sections: [S("備註內容", [C("MEMO_SEQ", "備註代碼"), F("MEMO_SEQ_NAME", "備註代碼名稱"), M("DESE", "備註全文", { full: true })])],
   },
   BMSP01: {
     label: "起造人／棟戶門牌",
-    forms: ["A11-1", "A11-2", "A11-2-2", "A11-5", "A12-5", "A13-3", "A21-1", "A31-1", "B11-1", "B11-2", "B12-1", "B13-1", "B13-2", "B13-2-2", "B13-3", "B13-5", "B21-1", "B14-1"],
+    forms: ["A11-1", "A11-2", "A11-2-2", "A11-5", "A12-5", "A13-3", "A21-1", "A31-1", "B11-1", "B11-2", "B12-1", "B13-1", "B13-2", "B13-2-2", "B13-3", "B13-5", "B21-1", "B14-1", "C11-1", "C11-2", "C11-2-2", "C21-1", "C21-4", "C22-1", "C22-2", "C22-3", "C22-4", "C22-5", "D11-1", "D11-2", "D13-1", "F 專業技師簽證", "H 農舍管制"],
     notice: "一列代表「起造人 × 棟號／門牌／用途」關係，不一定是一位起造人一列。本樣本 24 棟因此有 24 列。",
     sections: [
       S("起造人基本資料", [
@@ -159,7 +168,7 @@ const TABLE_CONFIG = {
   },
   BMSP02: {
     label: "設計人",
-    forms: ["A11-1", "A11-3", "A11-5", "A21-1", "A31-1"],
+    forms: ["A11-1", "A11-3", "A11-5", "A21-1", "A31-1", "C21-1", "C22-4"],
     sections: [
       S("建築師", [
         Y("SPOKESMAN", "主要設計人"), F("CNAME", "建築師姓名"), F("IDENTIFY_NO", "身分證號"),
@@ -171,7 +180,7 @@ const TABLE_CONFIG = {
   },
   BMSP03: {
     label: "監造人",
-    forms: ["A31-1", "B11-1", "B11-4", "B13-1", "B13-3", "B13-5", "B13-6", "B21-1", "B14-1"],
+    forms: ["A31-1", "B11-1", "B11-4", "B13-1", "B13-3", "B13-5", "B13-6", "B21-1", "B14-1", "C11-1", "C21-1", "D11-1"],
     sections: [
       S("監造建築師", [
         Y("SPOKESMAN", "主要監造人"), F("CNAME", "建築師姓名"), F("IDENTIFY_NO", "身分證號"),
@@ -189,7 +198,7 @@ const TABLE_CONFIG = {
   },
   BMSP04: {
     label: "承造人",
-    forms: ["A11-5", "A31-1", "B11-1", "B11-3", "B13-1", "B13-3", "B13-4", "B13-5", "B21-1", "B14-1", "B14-3"],
+    forms: ["A11-5", "A31-1", "B11-1", "B11-3", "B13-1", "B13-3", "B13-4", "B13-5", "B21-1", "B14-1", "B14-3", "C11-1", "C21-1", "C22-4", "D11-1"],
     sections: [
       S("營造業", [
         Y("SPOKESMAN", "主要承造人"), F("COMPANY_NAME", "營造業公司名稱", { wide: true }), F("COM_IDNO", "公司統一編號"), F("BOSS", "負責人"),
@@ -214,7 +223,7 @@ const TABLE_CONFIG = {
   },
   BMSPARK: {
     label: "停車空間",
-    forms: ["A11-1", "A31-1"],
+    forms: ["A11-1", "A31-1", "C11-1", "C21-1"],
     notice: "每種「停車方式 × 車種 × 法定／自設 × 室內外 × 地上下」組合各一列。",
     sections: [S("停車分類與數量", [
       C("PARK_KIND", "停車方式代碼"), C("CAR_KIND", "車種代碼"), C("APPL_KIND", "設立類別代碼"), C("IN_OUT", "室內外別代碼"), C("UP_DOWN", "地上地下別代碼"),
@@ -223,7 +232,7 @@ const TABLE_CONFIG = {
   },
   BMSSTAIR: {
     label: "樓層／用途／面積",
-    forms: ["A11-4", "A11-6", "A31-4"],
+    forms: ["A11-4", "A11-6", "A31-4", "C21-2", "C22-3"],
     notice: "一列代表一個「樓層 × 用途組合」。同一樓層有兩種用途時，可以同列填用途 1、2，也可能依原系統拆成多列。",
     sections: [
       S("本次樓層概要", [
@@ -310,7 +319,7 @@ const TABLE_CONFIG = {
   },
   BMSROAD: {
     label: "使用道路",
-    forms: ["B11-1"],
+    forms: ["B11-1", "D11-1"],
     notice: "舊系統 Build.mdb 的道路使用資料，不屬於 data.txt 13 表；會保存在完整案件 JSON。",
     sections: [
       S("道路位置", [
@@ -358,6 +367,34 @@ const TABLE_CONFIG = {
       S("檔案", [F("barcode", "照片／附件檔案", { kind: "file", full: true })]),
     ],
   },
+  C21_3: {
+    label: "變更使用檢討項目",
+    forms: ["C21-3"],
+    notice: "每個檢討項目一列。選擇項目代碼後會帶入舊系統的項目名稱；檢討結果與簽證說明填在結果欄。",
+    sections: [
+      S("檢討內容", [
+        F("Rpt_FmName", "書表代號"), C("Rpt_Seq", "檢討項目"), F("Rpt_Item", "檢討項目名稱", { full: true }), M("Rpt_Data", "檢討結果／簽證說明", { full: true }),
+      ]),
+    ],
+  },
+  BMELVTR: {
+    label: "昇降與機械停車設備",
+    forms: ["C22-5"],
+    notice: "每部昇降設備或機械停車設備一列，保存在完整案件 JSON／資料庫，不會增減 data.txt 的 13 表結構。",
+    sections: [
+      S("設備識別", [
+        C("CMEPAS", "主管機關代碼"), F("CMENUM", "設備列管編號"), F("PAKENO", "設備／停車設備編號"), N("CHECK_YEAR", "檢查年度"),
+        F("CMENAM", "設備名稱", { wide: true }), C("ELEV_USE", "設備種類"), F("FACILITY_NO", "設備數量／編號"), F("FACILITY_SCALE", "設備規模", { wide: true }),
+      ]),
+      S("建築物與執照", [
+        F("BUILD_NAME", "建築物名稱", { wide: true }), F("BUILD_ADDR", "建築物地址", { full: true }), F("USE_LICENSE", "使用執照字號", { wide: true }), F("LIC_NUM", "設備許可／執照號碼", { wide: true }),
+      ]),
+      S("檢查與效期", [
+        F("CHECK_RESULT", "檢查結果"), D("CHECK_DATE", "檢查日期"), D("VALID_DATE", "有效期限"), F("CHECK_MAN_NO", "檢查員證號"), F("CHECK_MAN_NAME", "檢查員姓名"),
+      ]),
+      S("製造廠商", [F("MFT_NAME", "製造廠商名稱", { wide: true }), F("MFT_NO", "製造廠商編號")]),
+    ],
+  },
 };
 
 const FORM_SETS = {
@@ -371,8 +408,16 @@ const FORM_SETS = {
     codes: ["B", "G"],
     tables: ["BMSBASE", "BMSLAN", "BMSMEMO", "BMSP01", "BMSP03", "BMSP04", "BMSSC", "BMSSCRP", "BMSROAD", "BMSCHK", "RPTPHOTO", "BM_TEC"],
   },
-  C: { label: "使用管理", codes: ["C"], tables: [] },
-  D: { label: "拆除與其他", codes: ["D", "F", "H"], tables: [] },
+  C: {
+    label: "使用管理",
+    codes: ["C"],
+    tables: ["BMSBASE", "BMSLAN", "BMSMEMO", "BMSP01", "BMSP02", "BMSP03", "BMSP04", "BMSPARK", "BMSSTAIR", "C21_3", "BMELVTR"],
+  },
+  D: {
+    label: "拆除與其他",
+    codes: ["D", "F", "H"],
+    tables: ["BMSBASE", "BMSLAN", "BMSLANOWNER", "BMSMEMO", "BMSP01", "BMSP03", "BMSP04", "BMSROAD", "BM_TEC"],
+  },
 };
 
 const CODE_OPTIONS = {
@@ -386,6 +431,10 @@ const CODE_OPTIONS = {
   "BMSBASE.BUILDING_KIND1_OLD": [["10", "鋼筋混凝土造（臺中市）"]],
   "BMSBASE.LAW_01": [["41", "112/5/10 建築技術規則版本"]],
   "BMSBASE.LAW_03": [["05", "113/3/1 耐震設計規範版本"]],
+  "BMSBASE.CHG_EXP": [["1", "非供公眾使用變更為非供公眾使用"], ["2", "非供公眾使用變更為供公眾使用"], ["3", "供公眾使用變更為他種供公眾使用"], ["4", "供公眾使用變更為非供公眾使用"]],
+  "BMSBASE.CHG_PRIN": [["1", "全部檢討"], ["2", "僅規定項目檢討"], ["3", "全部免檢討"]],
+  "BMSBASE.LAND_GET_TIME": [["1", "農業發展條例修正前取得"], ["2", "農業發展條例修正後取得"]],
+  "BMSBASE.FARM_BUILD": [["1", "個別興建"], ["2", "集村興建"]],
   "BM_TEC.TEC_ITEM": [["2", "地基調查"]],
   "BM_TEC.TEC_TYPE": [["04", "大地技師"]],
   "BMSSC.PRSTYLE": [["1", "開工查報"], ["2", "竣工查報"]],
@@ -393,6 +442,7 @@ const CODE_OPTIONS = {
   "BMSP04.FTENGTYPE": [["1", "主任技師"], ["2", "主任建築師"], ["3", "主任技師及主任建築師"]],
   "BMSP04.FTENGTYPE_OLD": [["1", "主任技師"], ["2", "主任建築師"], ["3", "主任技師及主任建築師"]],
   "RPTPHOTO.FORM_CODE": [["B14-4", "施工日誌／現況照片"], ["B14-5", "督察紀錄／檢附附件"]],
+  "BMELVTR.ELEV_USE": [["A", "緊急用升降機"], ["B", "一般升降機"], ["C", "自動樓梯"], ["D", "其他升降機"], ["E", "垂直循環型機械停車設備"], ["F", "多層循環型機械停車設備"], ["G", "水平循環型機械停車設備"], ["H", "平面往復型機械停車設備"], ["I", "簡易升降型機械停車設備"], ["J", "升降機型機械停車設備"], ["K", "多段型機械停車設備"], ["L", "升降滑動型機械停車設備"], ["M", "機械停車設備旋轉台"], ["N", "汽（機）車用升降機"], ["O", "個人住宅用升降機"]],
   "BMSLAN.DIST": [["436", "臺中市清水區"], ["420", "臺中市豐原區"]],
   "BMSLAN.DIST_OLD": [["436", "臺中市清水區"], ["420", "臺中市豐原區"]],
   "BMSLAN.SECTION": [["4662", "福安段（本案；須以新系統代碼庫複核）"]],
@@ -431,7 +481,7 @@ const genericDistrictOptions = [["436", "臺中市清水區"], ["420", "臺中�
 const FIELD_CODEBOOK = {
   BMSBASE: {
     BMPAS: { type: "PAS" }, GOV: { type: "BUDWD" }, BUILDING_CATEGORY: { type: "BIN" }, APPLY_TYPE: { type: "APP" },
-    LAW_01: { type: "BMLAW1" }, LAW_03: { type: "BMLAW2" },
+    LAW_01: { type: "BMLAW1" }, LAW_02: { type: "BMLAW2" }, LAW_03: { type: "BMLAW2" },
     USE_CATEGORY_CODE1: { type: "KIN", city: true }, USE_CATEGORY_CODE2: { type: "KIN", city: true }, USE_CATEGORY_CODE3: { type: "KIN", city: true },
     USAGE_CODE: { type: "BLU" }, BUILDING_KIND1: { type: "STU", city: true }, BUILDING_KIND2: { type: "STU", city: true }, BUILDING_KIND3: { type: "STU", city: true },
     BUILDING_KIND1_OLD: { type: "STU", city: true }, BUILDING_KIND2_OLD: { type: "STU", city: true }, BUILDING_KIND3_OLD: { type: "STU", city: true },
@@ -471,6 +521,8 @@ const FIELD_CODEBOOK = {
   BMSSC: { ZON_ZIP: { type: "ZON", city: true } },
   BMSROAD: { DIST: { type: "ZON", city: true } },
   BMSCHK: { CHK_Item_code: { type: "BMPECT" } },
+  C21_3: { Rpt_Seq: { type: "C21_3" } },
+  BMELVTR: { CMEPAS: { type: "PAS" } },
 };
 
 const BULK_FIELDS = {
@@ -489,6 +541,8 @@ const BULK_FIELDS = {
   BMSROAD: ["SPOKESMAN", "DIST", "ROAD_SEC", "ALLEY", "LANE", "DOOR_NO", "LENGTH", "WIDE", "USE_LIMITE_DAY"],
   BMSCHK: ["CHK_Item_code", "CHK_Item", "CHK_Reg_Number1", "CHK_Date1", "CHK_OK1", "PECT_DATE", "PECT_RES", "PECT_RVLFLAG"],
   BMSSCRP: ["PAGE_NO", "MONTHS", "ITEM01", "ITEM02", "ITEM04", "ITEM07", "ITEM08", "PEO_TECH_DATE", "PEO_PLAIN_DATE"],
+  C21_3: ["Rpt_Seq", "Rpt_Item", "Rpt_Data"],
+  BMELVTR: ["PAKENO", "ELEV_USE", "VALID_DATE", "USE_LICENSE", "MFT_NAME", "CMENAM"],
 };
 
 const COPY_CURRENT_TO_OLD = {
@@ -513,7 +567,7 @@ const state = {
   codebook: null,
   formSet: "A",
   tables: {},
-  activeTableByFormSet: { A: "BMSBASE", B: "BMSSC", C: "", D: "" },
+  activeTableByFormSet: { A: "BMSBASE", B: "BMSSC", C: "C21_3", D: "BMSBASE" },
   activeTable: "BMSBASE",
   activeRecord: 0,
   sourceName: "內建 data.txt 範本",
@@ -727,6 +781,7 @@ function recordCaption(table, record, index) {
     BMSP01: "BUILDING_NO", BMSP02: "CNAME", BMSP03: "CNAME", BMSP04: "COMPANY_NAME",
     BMSPARK: "NUM", BMSSTAIR: "STORY_CODE", BMSWORK: "CONSNAME", BMSSC: "PRSTYLE",
     BMSROAD: "ROAD_SEC", BMSCHK: "CHK_Item", BMSSCRP: "MONTHS", RPTPHOTO: "FILE_NAME",
+    C21_3: "Rpt_Item", BMELVTR: "CMENAM",
   };
   const field = candidates[table];
   const value = field ? record[field] : "";
@@ -1113,7 +1168,11 @@ function handleFieldInput(event) {
   record[field] = event.currentTarget.value;
   if (state.activeTable === "BMSBASE" && field === "INDEX_KEY") {
     for (const rows of Object.values(activeTables())) {
-      for (const row of rows) if (Object.hasOwn(row, "INDEX_KEY")) row.INDEX_KEY = record.INDEX_KEY;
+      for (const row of rows) {
+        for (const keyField of ["INDEX_KEY", "Index_key", "index_key"]) {
+          if (Object.hasOwn(row, keyField)) row[keyField] = record.INDEX_KEY;
+        }
+      }
     }
   }
   if (state.activeTable === "BMSBASE" && field === "BMPAS" && !record.GOV) record.GOV = record.BMPAS;
@@ -1142,7 +1201,9 @@ function selectedCodeLabel(table, field, value, record) {
 function hydrateDerived(table, record, changedField = "") {
   const codeMap = {
     "BMSBASE.USAGE_CODE": ["USAGE_CODE_DESC", { "01": "住宅" }],
+    "BMSBASE.CHG_PRIN": ["CHG_PRIN_DESC", { "1": "全部檢討", "2": "僅規定項目檢討", "3": "全部免檢討" }],
     "BMSMEMO.MEMO_SEQ": ["MEMO_SEQ_NAME", { M591: "火災警報器", M2Q1: "污水用戶", M161: "地質敏感" }],
+    "C21_3.Rpt_Seq": ["Rpt_Item", {}],
   };
   const direct = codeMap[`${table}.${changedField}`];
   if (direct && !record[direct[0]]) {
@@ -1176,7 +1237,10 @@ function blankRecord(table) {
   const record = {};
   for (const field of fieldOrderFor(table)) record[field] = "";
   const baseKey = activeTables().BMSBASE?.[0]?.INDEX_KEY || "";
-  if (Object.hasOwn(record, "INDEX_KEY")) record.INDEX_KEY = baseKey;
+  for (const keyField of ["INDEX_KEY", "Index_key", "index_key"]) {
+    if (Object.hasOwn(record, keyField)) record[keyField] = baseKey;
+  }
+  if (table === "C21_3") record.Rpt_FmName = "C21-3";
   return record;
 }
 
@@ -1594,7 +1658,7 @@ function caseNewBlank() {
   state.tables.BMSBASE = [base];
   state.formSet = "A";
   state.activeTable = "BMSBASE";
-  state.activeTableByFormSet = { A: "BMSBASE", B: "BMSSC", C: "", D: "" };
+  state.activeTableByFormSet = { A: "BMSBASE", B: "BMSSC", C: "C21_3", D: "BMSBASE" };
   state.activeRecord = 0;
   state.sourceName = "新空白案件";
 }
@@ -1902,10 +1966,12 @@ const SAMPLE_PATCHES = {
     LAW_COVER_RATE: "60", LAW_SPACE_RATE: "200", BASE_AREA_TOTAL: "1000", STATUTORY_OPEN_SPACE: "400", USE_CATEGORY_CODE1: "0140",
     BUILDING_AREA: "500", TOTAL_CONSTRU_AREA: "1800", BUILD_COVER_RATE: "50", SPACE_RATE: "180", USAGE_CODE: "01", USAGE_CODE_DESC: "住宅",
     BUILDING_KIND1: "10", BUILD_HIHIGHT: "14", CHWANG_NO: "1", BUILDING_NO: "2", UP_FLOOR_NO: "4", DN_FLOOR_NO: "0", TOT_HOUSE_NO: "8", PRICE: "15000000",
-    LAW_01: "41", LAW_03: "05", SEQ_NO: "1", LAST_MODIFY: "00001",
+    LAW_01: "41", LAW_02: "03", LAW_03: "05", SEQ_NO: "1", LAST_MODIFY: "00001", LICENSE_USE: "範例使照字第00001號",
+    IDENTIFY_LICE_DATE_USE: "1150601", RECEIVE_LICE_DATE_USE: "1150605", CHG_EXP: "2", CHG_PRIN: "2", DOC1: "Y", DOC2: "Y", DOC3: "N", DOC4: "N",
+    LAND_GET_TIME: "2", FARM_BUILD: "1", FARM_MEMO: "虛構農舍管制範例",
   }],
   BMSLAN: [
-    { SPOKESMAN: "Y", DIST: "436", ROAD_NO1: "100", ROAD_NO2: "1", TOT_AREA: "600.5", USE_AREA: "600.5", USE_CATEGORY_CODE1: "0140", LOCATED: "N" },
+    { SPOKESMAN: "Y", DIST: "436", ROAD_NO1: "100", ROAD_NO2: "1", TOT_AREA: "600.5", USE_AREA: "600.5", USE_CATEGORY_CODE1: "0140", LOCATED: "Y" },
     { SPOKESMAN: "N", DIST: "436", ROAD_NO1: "100", ROAD_NO2: "2", TOT_AREA: "399.5", USE_AREA: "399.5", USE_CATEGORY_CODE1: "0140", LOCATED: "N" },
   ],
   BMSLANOWNER: [
@@ -1938,6 +2004,11 @@ const SAMPLE_PATCHES = {
     { PAGE_NO: "1", MONTHS: "115年3月", ITEM01: "8", ITEM02: "16", ITEM04: "24", ITEM07: "32", ITEM08: "4", PEO_TECH_DATE: "10", PEO_PLAIN_DATE: "30" },
   ],
   RPTPHOTO: [{ FORM_CODE: "B14-4", CR_DATE: "1150302", MEMO: "請在前端選擇範例照片或附件；CSV／XML 中 barcode 可留空。" }],
+  C21_3: [
+    { Rpt_FmName: "C21-3", Rpt_Seq: "001", Rpt_Item: "【1.防火區劃】", Rpt_Data: "符合規定" },
+    { Rpt_FmName: "C21-3", Rpt_Seq: "002", Rpt_Item: "【2.分間牆】", Rpt_Data: "依圖說檢討" },
+  ],
+  BMELVTR: [{ CMEPAS: "I80", CMENUM: "範例列管0001", PAKENO: "E01", CHECK_YEAR: "115", CMENAM: "範例昇降機", BUILD_NAME: "範例集合住宅", BUILD_ADDR: "臺中市範例區範例路1號", CHECK_RESULT: "合格", USE_LICENSE: "範例使照字第00001號", CHECK_DATE: "1150601", VALID_DATE: "1160531", FACILITY_NO: "1", FACILITY_SCALE: "載重1000公斤", ELEV_USE: "B", MFT_NAME: "範例電梯股份有限公司", MFT_NO: "M0001", CHECK_MAN_NO: "C0001", CHECK_MAN_NAME: "王範例", LIC_NUM: "L0001" }],
 };
 
 function sampleRowsFor(table) {

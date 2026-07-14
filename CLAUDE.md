@@ -83,14 +83,14 @@
 - 先啟動 `python -X utf8 .\server.py`，再跑 `python -X utf8 .\tests\server_roundtrip_test.py` — 含位元組級 roundtrip，改伺服器或匯出邏輯必跑。
 - `tests/network_access_test.py` — 權杖／回環驗證，改連線與授權邏輯時跑。
 
-規則：改了行為就同步改測試斷言；測試不得依賴真實個資（過渡期間 roundtrip 測試仍讀根目錄 data.txt，遷移到虛構 fixture 是 `docs/CODEX_PROMPTS.md` Prompt 1 的工作）。
+規則：改了行為就同步改測試斷言；測試主體只使用版控內的虛構 fixture，不得依賴真實個資。根目錄真實 `data.txt` 的 roundtrip 只在檔案存在時作本機附加驗證。
 
 ## 7. 發展路線與規劃文件索引
 
 - **PostgreSQL 對接預備**：`docs/POSTGRES_INTEGRATION_PLAN.md`——資料模型、案件 JSON 封套、DDL 草案、預備工項。編輯器本體保持可離線單機使用；對接走「案件文件」交換層。
 - **Codex 工作指令集**：`docs/CODEX_PROMPTS.md`——依編號逐一執行，每個 Prompt 自帶驗收標準。
 - **書表組擴充（A → B → C／D）**：以側邊欄「書表組」切換整排資料群組清單；A 組（現有 11 群組）行為不得回歸。B／C／D 組實作前必須先產出對應表研究文件（比照 `CPAMI_指定書表_實用數據對應表.md` 的格式），且不在 data.txt 13 表內的資料一律先列缺口、經使用者決策後才能新增儲存格式。
-- **目前書表組現況**：A 組 11 群組維持既有操作；B 組已開放共用資料、`BMSSC`、`BM_TEC`，以及案件封套 `extraTables` 的 `BMSROAD/BMSCHK/BMSSCRP/RPTPHOTO`。完整案件 JSON 保存 13 表外資料；data.txt 匯出仍只能且必須完整輸出原 13 表、596 欄。C／D 組尚待 Prompt 7 研究。
+- **目前書表組現況**：A／B／C／D 四組皆已開放；C 組新增 `C21_3`、`BMELVTR`，D 組共用拆除、`BM_TEC` 與農舍管制資料。案件封套 `extraTables` 現有 `BMSROAD/BMSCHK/BMSSCRP/RPTPHOTO/C21_3/BMELVTR`；完整案件 JSON 保存 13 表外資料，data.txt 匯出仍只能且必須完整輸出原 13 表、596 欄。
 
 ## 8. 文件維護規則
 

@@ -50,8 +50,9 @@ assert.equal(app.state.formSet, "A");
 assert.deepEqual(Object.keys(app.FORM_SETS), ["A", "B", "C", "D"]);
 assert.deepEqual(Array.from(app.FORM_SETS.A.tables), ["BMSBASE", "BMSLAN", "BMSLANOWNER", "BMSMEMO", "BMSP01", "BMSP02", "BMSP03", "BMSP04", "BMSPARK", "BMSSTAIR", "BMSWORK"]);
 assert.deepEqual(Array.from(app.FORM_SETS.B.tables), ["BMSBASE", "BMSLAN", "BMSMEMO", "BMSP01", "BMSP03", "BMSP04", "BMSSC", "BMSSCRP", "BMSROAD", "BMSCHK", "RPTPHOTO", "BM_TEC"]);
-for (const formSet of ["C", "D"]) assert.equal(app.FORM_SETS[formSet].tables.length, 0, `${formSet} editing groups remain for Prompt 7`);
-assert.equal(new Set([...app.FORM_SETS.A.tables, ...app.FORM_SETS.B.tables]).size, Object.keys(app.TABLE_CONFIG).length);
+assert.deepEqual(Array.from(app.FORM_SETS.C.tables), ["BMSBASE", "BMSLAN", "BMSMEMO", "BMSP01", "BMSP02", "BMSP03", "BMSP04", "BMSPARK", "BMSSTAIR", "C21_3", "BMELVTR"]);
+assert.deepEqual(Array.from(app.FORM_SETS.D.tables), ["BMSBASE", "BMSLAN", "BMSLANOWNER", "BMSMEMO", "BMSP01", "BMSP03", "BMSP04", "BMSROAD", "BM_TEC"]);
+assert.equal(new Set(Object.values(app.FORM_SETS).flatMap(({ tables }) => tables)).size, Object.keys(app.TABLE_CONFIG).length);
 assert.strictEqual(app.activeTables(), app.state.tables, "activeTables must expose the current case tables");
 
 app.state.formSet = "A";
@@ -60,6 +61,10 @@ const aBaseFieldCount = app.visibleFields("BMSBASE").length;
 app.state.formSet = "B";
 assert(app.visibleSections("BMSBASE").some(({ section }) => section.formSets?.includes("B")), "B-only BMSBASE sections must be visible in B");
 assert(app.visibleFields("BMSBASE").length > aBaseFieldCount, "B should add fields without changing the A field set");
+app.state.formSet = "C";
+assert(app.visibleSections("BMSBASE").some(({ section }) => section.formSets?.includes("C")), "C-only BMSBASE sections must be visible in C");
+app.state.formSet = "D";
+assert(app.visibleSections("BMSBASE").some(({ section }) => section.formSets?.includes("D")), "D-only BMSBASE sections must be visible in D");
 app.state.formSet = "A";
 assert(source.includes("state.schemaVersion = data.schemaVersion"));
 assert(source.includes("未載入案件，可載入 data.txt 或建立新空白案件"));
@@ -70,8 +75,8 @@ assert.equal(
 );
 assert(source.includes("formSet: state.formSet") && source.includes("tables: standardTablesPayload()") && source.includes("extraTables: extraTablesPayload()"), "The case envelope must separate data.txt and extension tables");
 assert.equal(schema.schemaVersion, extensionSchema.schemaVersion);
-assert.equal(extensionSchema.extraTableOrder.length, 4);
-assert.equal(Object.values(extensionSchema.extraFieldOrder).reduce((sum, fields) => sum + fields.length, 0), 79);
+assert.equal(extensionSchema.extraTableOrder.length, 6);
+assert.equal(Object.values(extensionSchema.extraFieldOrder).reduce((sum, fields) => sum + fields.length, 0), 110);
 assert.equal(codebook.version, 2);
 assert.equal(codebook.source.bldcodeRows, 22383);
 assert.equal(codebook.officialSections.length, 1626);
@@ -165,7 +170,7 @@ assert(bulkSpokesmanMarkup.includes('<select class="compact-option-select"'), "B
 assert(!bulkSpokesmanMarkup.includes("data-open-bulk-picker"));
 assert(app.renderInlineOptionMarkup([["A", "甲"]], "legacy").includes("目前值：legacy"), "Unknown existing values must remain selectable and exportable");
 
-const expectedEditableCounts = { BM_TEC: 16, BMSSC: 52, BMSROAD: 11, BMSCHK: 29, BMSSCRP: 12, RPTPHOTO: 4 };
+const expectedEditableCounts = { BM_TEC: 16, BMSSC: 52, BMSROAD: 11, BMSCHK: 29, BMSSCRP: 12, RPTPHOTO: 4, C21_3: 4, BMELVTR: 19 };
 for (const [table, count] of Object.entries(expectedEditableCounts)) {
   assert.equal(app.allFields(table).length, count, `${table} editable field count`);
 }

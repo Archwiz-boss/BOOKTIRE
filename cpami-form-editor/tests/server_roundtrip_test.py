@@ -98,7 +98,7 @@ legacy_validation, legacy_validation_status = post_json_response(
 )
 envelope = {
     "schemaVersion": schema["schemaVersion"],
-    "formSet": "B",
+    "formSet": "C",
     "tables": fixture_import["tables"],
     "extraTables": {
         "BMSROAD": [
@@ -110,7 +110,25 @@ envelope = {
                 "LENGTH": "20",
                 "WIDE": "8",
             }
-        ]
+        ],
+        "C21_3": [
+            {
+                "Index_key": "1150101120000",
+                "Rpt_FmName": "C21-3",
+                "Rpt_Seq": "001",
+                "Rpt_Item": "【1.防火區劃】",
+                "Rpt_Data": "符合規定",
+            }
+        ],
+        "BMELVTR": [
+            {
+                "INDEX_KEY": "1150101120000",
+                "PERSON_SEQ": "1",
+                "PAKENO": "E01",
+                "CHECK_YEAR": "115",
+                "ELEV_USE": "B",
+            }
+        ],
     },
 }
 envelope_validation, envelope_validation_status = post_json_response(
@@ -133,8 +151,10 @@ envelope_export, _envelope_export_type, envelope_export_status = post(
 assert legacy_validation_status == envelope_validation_status == 200
 assert legacy_validation["ok"] and envelope_validation["ok"]
 assert case_import_status == 200
-assert case_import["formSet"] == "B"
+assert case_import["formSet"] == "C"
 assert case_import["extraTables"]["BMSROAD"][0]["ROAD_SEC"] == "範例路"
+assert case_import["extraTables"]["C21_3"][0]["Rpt_Seq"] == "001"
+assert case_import["extraTables"]["BMELVTR"][0]["ELEV_USE"] == "B"
 assert unsafe_case_import_status == 200
 assert unsafe_case_import["tables"]["BMSBASE"][0]["BUILDING_NAME"] == '範例"工程\n草稿'
 assert not unsafe_case_import["validation"]["ok"]
@@ -219,6 +239,8 @@ report = {
         "caseJsonImport": case_import_status,
         "unsafeDraftCaseJsonImport": unsafe_case_import_status,
         "extraRoadRows": len(case_import["extraTables"]["BMSROAD"]),
+        "extraC21Rows": len(case_import["extraTables"]["C21_3"]),
+        "extraElevatorRows": len(case_import["extraTables"]["BMELVTR"]),
     },
     "realRoundtrip": real_roundtrip,
     "bootstrapMatchesReal": bootstrap_matches_real,

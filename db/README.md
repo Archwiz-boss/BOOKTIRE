@@ -1,6 +1,6 @@
 # PostgreSQL 對接工具
 
-這一層讓內部系統以「一份完整案件文件」保存 CPAMI 13 表與 B 系列擴充資料。`cpami_case_documents.payload` 的 JSONB 是正本，包含 `tables` 與 `extraTables`，所有欄位值保持字串；`cpami_v_*` 只投影 data.txt 的 13 表。編輯器本體仍可離線執行，不依賴 PostgreSQL 或 psycopg。
+這一層讓內部系統以「一份完整案件文件」保存 CPAMI 13 表與 B／C／D 系列擴充資料。`cpami_case_documents.payload` 的 JSONB 是正本，包含 `tables` 與 `extraTables`，所有欄位值保持字串；`cpami_v_*` 只投影 data.txt 的 13 表。編輯器本體仍可離線執行，不依賴 PostgreSQL 或 psycopg。
 
 ## 前置條件
 
@@ -83,7 +83,7 @@ python -X utf8 .\cpami-form-editor\tools\pg_import.py `
   --status draft
 ```
 
-schema `2026-07-14.1` 的完整案件 JSON 可包含 `extraTables.BMSROAD/BMSCHK/BMSSCRP/RPTPHOTO`。`pg_import.py` 會把四組資料連同 13 表一起保存；dry-run 只顯示擴充表筆數，不會印出附件或個資內容。
+schema `2026-07-14.2` 的完整案件 JSON 可包含 `extraTables.BMSROAD/BMSCHK/BMSSCRP/RPTPHOTO/C21_3/BMELVTR`。`pg_import.py` 會把六組資料連同 13 表一起保存；dry-run 只顯示擴充表筆數，不會印出附件或個資內容。
 
 `status=draft` 時，工具會更新同一 `index_key + form_set` 的最近一份草稿；其他狀態一律新增文件。有驗證錯誤時預設中止；確實需要保留待修草稿才使用 `--allow-invalid`，而且狀態必須是 `draft`。有錯誤的草稿仍不能匯出 data.txt。
 

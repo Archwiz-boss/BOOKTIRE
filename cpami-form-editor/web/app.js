@@ -221,6 +221,13 @@ const TABLE_CONFIG = {
   },
 };
 
+const FORM_SETS = {
+  A: {
+    label: "建照申請",
+    tables: ["BMSBASE", "BMSLAN", "BMSLANOWNER", "BMSMEMO", "BMSP01", "BMSP02", "BMSP03", "BMSP04", "BMSPARK", "BMSSTAIR", "BMSWORK"],
+  },
+};
+
 const CODE_OPTIONS = {
   "BMSBASE.BMPAS": [["I80", "臺中市"]],
   "BMSBASE.GOV": [["I80", "臺中市政府"]],
@@ -340,6 +347,7 @@ const state = {
   bootstrap: null,
   schemaVersion: null,
   codebook: null,
+  formSet: "A",
   tables: {},
   activeTable: "BMSBASE",
   activeRecord: 0,
@@ -497,7 +505,7 @@ function optionsFor(table, field, record = currentRecord()) {
   if (!spec || !state.codebook) return sortOptionsByName(fallback);
   let rows = state.codebook.codeTypes?.[spec.type] || [];
   if (spec.type === "SEC") rows = [...(state.codebook.officialSections || []), ...rows];
-  const city = state.tables.BMSBASE?.[0]?.BMPAS || "";
+  const city = activeTables().BMSBASE?.[0]?.BMPAS || "";
   if (spec.city && city) {
     rows = ["ZON", "SEC"].includes(spec.type)
       ? rows.filter((row) => row.parent === city)
@@ -526,7 +534,7 @@ function optionsFor(table, field, record = currentRecord()) {
 }
 
 function currentRows() {
-  return state.tables[state.activeTable] || [];
+  return activeTables()[state.activeTable] || [];
 }
 
 function currentRecord() {
@@ -546,8 +554,9 @@ function recordCaption(table, record, index) {
 }
 
 function renderNav() {
-  $("#tableNav").innerHTML = Object.entries(TABLE_CONFIG).map(([table, config]) => {
-    const count = (state.tables[table] || []).length;
+  $("#tableNav").innerHTML = FORM_SETS[state.formSet].tables.map((table) => {
+    const config = TABLE_CONFIG[table];
+    const count = (activeTables()[table] || []).length;
     return `<button class="nav-item ${table === state.activeTable ? "active" : ""}" type="button" data-table="${table}">
       <span>${escapeHtml(config.label)}<small class="nav-raw">${table}</small></span>
       <span class="nav-count">${count}</span>
@@ -792,7 +801,7 @@ function handleFieldInput(event) {
   const field = event.currentTarget.dataset.field;
   record[field] = event.currentTarget.value;
   if (state.activeTable === "BMSBASE" && field === "INDEX_KEY") {
-    for (const rows of Object.values(state.tables)) {
+    for (const rows of Object.values(activeTables())) {
       for (const row of rows) if (Object.hasOwn(row, "INDEX_KEY")) row.INDEX_KEY = record.INDEX_KEY;
     }
   }
@@ -852,7 +861,7 @@ function hydrateDerived(table, record, changedField = "") {
 function blankRecord(table) {
   const record = {};
   for (const field of state.bootstrap.fieldOrder[table]) record[field] = "";
-  const baseKey = state.tables.BMSBASE?.[0]?.INDEX_KEY || "";
+  const baseKey = activeTables().BMSBASE?.[0]?.INDEX_KEY || "";
   if (Object.hasOwn(record, "INDEX_KEY")) record.INDEX_KEY = baseKey;
   return record;
 }
@@ -882,13 +891,13 @@ function deleteRecord() {
 
 function clearTableData(table) {
   const repeatable = Boolean(state.bootstrap.tableMeta[table]?.repeatable);
-  state.tables[table] = repeatable ? [] : [blankRecord(table)];
-  return state.tables[table];
+  activeTables()[table] = repeatable ? [] : [blankRecord(table)];
+  return activeTables()[table];
 }
 
 function openClearCurrentTableDialog() {
   const table = state.activeTable;
-  const rows = state.tables[table] || [];
+  const rows = activeTables()[table] || [];
   if (!rows.length) return;
   const label = TABLE_CONFIG[table].label;
   const repeatable = Boolean(state.bootstrap.tableMeta[table]?.repeatable);
@@ -918,7 +927,7 @@ function fieldDefinition(table, fieldName) {
 }
 
 function normalizeRowMetadata(table) {
-  const rows = state.tables[table] || [];
+  const rows = activeTables()[table] || [];
   rows.forEach((record, index) => {
     for (const field of ["person_seq", "Person_seq", "PERSON_SEQ"]) {
       if (Object.hasOwn(record, field)) record[field] = String(index + 1);
@@ -929,7 +938,7 @@ function normalizeRowMetadata(table) {
 
 function addBulkRows(count) {
   const table = state.activeTable;
-  const rows = state.tables[table];
+  const rows = activeTables()[table];
   for (let index = 0; index < count; index += 1) rows.push(blankRecord(table));
   state.bulkDirty = true;
   normalizeRowMetadata(table);
@@ -974,7 +983,7 @@ function renderBulkTable() {
   const table = state.activeTable;
   const fieldNames = BULK_FIELDS[table] || [];
   const fields = fieldNames.map((name) => fieldDefinition(table, name));
-  const rows = state.tables[table] || [];
+  const rows = activeTables()[table] || [];
   $("#bulkDialogTitle").textContent = `${TABLE_CONFIG[table].label} — 批次表格`;
   $("#bulkTableArea").innerHTML = `<table class="bulk-table">
     <thead><tr><th>選取</th><th>#</th>${fields.map((field) => `<th class="${bulkColumnClass(field)}" title="${field.name}">${escapeHtml(field.label)}<small class="nav-raw">${field.name}</small></th>`).join("")}</tr></thead>
@@ -987,7 +996,7 @@ function renderBulkTable() {
 
   $$('[data-bulk-field]').forEach((control) => {
     const update = (event) => {
-      const row = state.tables[table][Number(control.dataset.bulkRow)];
+      const row = activeTables()[table][Number(control.dataset.bulkRow)];
       row[control.dataset.bulkField] = control.value;
       hydrateDerived(table, row, control.dataset.bulkField);
       state.bulkDirty = true;
@@ -1005,7 +1014,7 @@ function renderBulkTable() {
     control.addEventListener("paste", handleBulkPaste);
   });
   $$('[data-open-bulk-picker]').forEach((button) => button.addEventListener("click", () => {
-    const row = state.tables[table][Number(button.dataset.bulkPickerRow)];
+    const row = activeTables()[table][Number(button.dataset.bulkPickerRow)];
     const field = fieldDefinition(table, button.dataset.openBulkPicker);
     const target = button.parentElement.querySelector("[data-bulk-field]");
     openOptionPicker(target, field.label, pickerOptionsForField(table, field, row), `${table}.${field.name}`);
@@ -1048,9 +1057,9 @@ function handleBulkPaste(event) {
   const sourceRows = hasHeader ? matrix.slice(1) : matrix;
   const startRow = Number(event.currentTarget.dataset.bulkRow);
   const startColumn = Number(event.currentTarget.dataset.bulkCol);
-  while (state.tables[table].length < startRow + sourceRows.length) state.tables[table].push(blankRecord(table));
+  while (activeTables()[table].length < startRow + sourceRows.length) activeTables()[table].push(blankRecord(table));
   sourceRows.forEach((sourceRow, rowOffset) => {
-    const target = state.tables[table][startRow + rowOffset];
+    const target = activeTables()[table][startRow + rowOffset];
     sourceRow.forEach((value, sourceColumn) => {
       const targetField = hasHeader ? headerTargets[sourceColumn] : fieldNames[startColumn + sourceColumn];
       if (!targetField) return;
@@ -1091,9 +1100,9 @@ function duplicateBulkRows() {
   if (!selected.length) { toast("請先勾選要複製的列。", "error"); return; }
   const table = state.activeTable;
   for (const index of selected) {
-    const record = deepClone(state.tables[table][index]);
+    const record = deepClone(activeTables()[table][index]);
     for (const field of ["識別碼", "CR_DATE", "UP_DATE", "OP_USER"]) if (Object.hasOwn(record, field)) record[field] = "";
-    state.tables[table].push(record);
+    activeTables()[table].push(record);
   }
   state.bulkDirty = true;
   normalizeRowMetadata(table);
@@ -1106,7 +1115,7 @@ function deleteBulkRows() {
   if (!selected.length) { toast("請先勾選要刪除的列。", "error"); return; }
   if (!window.confirm(`確定刪除勾選的 ${selected.length} 列？`)) return;
   const table = state.activeTable;
-  for (const index of selected.sort((a, b) => b - a)) state.tables[table].splice(index, 1);
+  for (const index of selected.sort((a, b) => b - a)) activeTables()[table].splice(index, 1);
   state.bulkDirty = true;
   normalizeRowMetadata(table);
   renderBulkTable();
@@ -1172,6 +1181,22 @@ function applyFieldSearch() {
   syncSectionToggleButton();
 }
 
+// -----------------------------------------------------------------------------
+// caseStore — server interaction and case lifecycle
+// -----------------------------------------------------------------------------
+
+function activeTables() {
+  return state.tables;
+}
+
+function caseEnvelope() {
+  return {
+    schemaVersion: state.schemaVersion,
+    formSet: state.formSet,
+    tables: activeTables(),
+  };
+}
+
 async function apiJson(path, options = {}) {
   const response = await fetch(path, options);
   const data = await response.json();
@@ -1179,27 +1204,25 @@ async function apiJson(path, options = {}) {
   return data;
 }
 
-async function loadDataTxt(file) {
-  setStatus("正在解析 CP950 data.txt…", "warn");
-  try {
-    const data = await apiJson("/api/import-data-txt", { method: "POST", body: await file.arrayBuffer() });
-    state.tables = data.tables;
-    state.sourceName = file.name;
-    state.activeTable = "BMSBASE";
-    state.activeRecord = 0;
-    renderAll();
-    setStatus(`已載入 ${file.name}，13 表結構正確`, data.validation.ok ? "ok" : "warn");
-    toast("data.txt 已載入；原始欄位與未顯示欄位也會完整保留。 ");
-  } catch (error) {
-    setStatus("data.txt 載入失敗", "error");
-    toast(error.message, "error");
-  } finally {
-    $("#dataFileInput").value = "";
-  }
+async function caseBootstrap() {
+  const [data, codebook] = await Promise.all([apiJson("/api/bootstrap"), apiJson("/codebook.json")]);
+  state.bootstrap = data;
+  state.schemaVersion = data.schemaVersion;
+  state.codebook = codebook;
+  state.tables = deepClone(data.tables);
+  return data;
 }
 
-function newBlankCase() {
-  if (!window.confirm("建立新空白案件會清除目前畫面中的所有案件資料；尚未匯出的修改不會保留。確定繼續？")) return;
+async function caseImportDataTxt(file) {
+  const data = await apiJson("/api/import-data-txt", { method: "POST", body: await file.arrayBuffer() });
+  state.tables = data.tables;
+  state.sourceName = file.name;
+  state.activeTable = "BMSBASE";
+  state.activeRecord = 0;
+  return data;
+}
+
+function caseNewBlank() {
   const emptyTables = {};
   for (const table of state.bootstrap.tableOrder) emptyTables[table] = [];
   state.tables = emptyTables;
@@ -1213,6 +1236,38 @@ function newBlankCase() {
   state.activeTable = "BMSBASE";
   state.activeRecord = 0;
   state.sourceName = "新空白案件";
+}
+
+function caseValidate() {
+  return apiJson("/api/validate", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(caseEnvelope()),
+  });
+}
+
+function caseExport() {
+  return fetch("/api/export", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(caseEnvelope()),
+  });
+}
+
+async function loadDataTxt(file) {
+  setStatus("正在解析 CP950 data.txt…", "warn");
+  try {
+    const data = await caseImportDataTxt(file);
+    renderAll();
+    setStatus(`已載入 ${file.name}，13 表結構正確`, data.validation.ok ? "ok" : "warn");
+    toast("data.txt 已載入；原始欄位與未顯示欄位也會完整保留。 ");
+  } catch (error) {
+    setStatus("data.txt 載入失敗", "error");
+    toast(error.message, "error");
+  } finally {
+    $("#dataFileInput").value = "";
+  }
+}
+
+function newBlankCase() {
+  if (!window.confirm("建立新空白案件會清除目前畫面中的所有案件資料；尚未匯出的修改不會保留。確定繼續？")) return;
+  caseNewBlank();
   renderAll();
   setStatus("已建立空白案件；BM_TEC、BMSSC 與所有子表均已清空", "warn");
   toast("請先填案件主檔，再新增地號、人員、樓層等資料。 ");
@@ -1236,9 +1291,7 @@ function showValidation(result) {
 
 async function validateData(showDialog = true) {
   try {
-    const result = await apiJson("/api/validate", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ schemaVersion: state.schemaVersion, formSet: "A", tables: state.tables }),
-    });
+    const result = await caseValidate();
     if (showDialog) showValidation(result);
     setStatus(result.ok ? `資料格式可匯出（${result.warnings.length} 個提醒）` : `資料有 ${result.errors.length} 個錯誤`, result.ok ? (result.warnings.length ? "warn" : "ok") : "error");
     return result;
@@ -1251,9 +1304,7 @@ async function validateData(showDialog = true) {
 async function exportDataTxt() {
   setStatus("正在驗證並產生 CP950 data.txt…", "warn");
   try {
-    const response = await fetch("/api/export", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ schemaVersion: state.schemaVersion, formSet: "A", tables: state.tables }),
-    });
+    const response = await caseExport();
     if (!response.ok) {
       const result = await response.json();
       if (result.errors) showValidation(result);
@@ -1436,8 +1487,8 @@ function applyMapping() {
     return record;
   });
   if (!state.bootstrap.tableMeta[table]?.repeatable) rows = rows.slice(0, 1);
-  if ($("#importModeSelect").value === "append" && state.bootstrap.tableMeta[table]?.repeatable) state.tables[table].push(...rows);
-  else state.tables[table] = rows;
+  if ($("#importModeSelect").value === "append" && state.bootstrap.tableMeta[table]?.repeatable) activeTables()[table].push(...rows);
+  else activeTables()[table] = rows;
   state.activeTable = table;
   state.activeRecord = 0;
   state.sourceName = $("#sourceFileInput").files[0]?.name || "CSV／XML";
@@ -1558,11 +1609,7 @@ function openSampleDialog() {
 
 async function bootstrap() {
   try {
-    const [data, codebook] = await Promise.all([apiJson("/api/bootstrap"), apiJson("/codebook.json")]);
-    state.bootstrap = data;
-    state.schemaVersion = data.schemaVersion;
-    state.codebook = codebook;
-    state.tables = deepClone(data.tables);
+    const data = await caseBootstrap();
     state.showRawFields = storageGet("cpami-show-raw-fields") === "1";
     const tableOptions = Object.entries(TABLE_CONFIG).map(([table, config]) => `<option value="${table}">${escapeHtml(config.label)} — ${table}</option>`).join("");
     $("#targetTableSelect").innerHTML = tableOptions;

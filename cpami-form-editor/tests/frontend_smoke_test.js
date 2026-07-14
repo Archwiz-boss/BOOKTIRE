@@ -14,7 +14,7 @@ const stylesPath = path.join(projectRoot, "web", "styles.css");
 let source = fs.readFileSync(appPath, "utf8");
 source = source.slice(0, source.indexOf('$("#loadDataButton")'));
 source += `\nglobalThis.__test = {
-  TABLE_CONFIG, state, optionsFor, allFields, sampleRowsFor,
+  TABLE_CONFIG, FORM_SETS, state, activeTables, optionsFor, allFields, sampleRowsFor,
   buildSampleCsv, buildSampleXml, parseDelimited, guessTarget, codeSpecFor, CODE_OPTIONS,
   COPY_CURRENT_TO_OLD, copyMappedValues, sortOptionsByName, leadingChineseNumber,
   fieldDefinition, renderField, renderBulkControl, bulkColumnClass, sectionStartsOpen,
@@ -40,13 +40,17 @@ app.state.codebook = codebook;
 app.state.tables = { BMSBASE: [{ BMPAS: "I80" }] };
 
 assert.equal(app.state.schemaVersion, null);
+assert.equal(app.state.formSet, "A");
+assert.deepEqual(Array.from(app.FORM_SETS.A.tables), Object.keys(app.TABLE_CONFIG), "A form-set tables must match TABLE_CONFIG keys and order");
+assert.strictEqual(app.activeTables(), app.state.tables, "activeTables must expose the current case tables");
 assert(source.includes("state.schemaVersion = data.schemaVersion"));
 assert(source.includes("未載入案件，可載入 data.txt 或建立新空白案件"));
 assert.equal(
-  source.split('JSON.stringify({ schemaVersion: state.schemaVersion, formSet: "A", tables: state.tables })').length - 1,
+  source.split("JSON.stringify(caseEnvelope())").length - 1,
   2,
   "Validate and export must both send the versioned case envelope",
 );
+assert(source.includes("formSet: state.formSet") && source.includes("tables: activeTables()"), "The case envelope must use the active form set and tables");
 assert.equal(codebook.version, 2);
 assert.equal(codebook.source.bldcodeRows, 22383);
 assert.equal(codebook.officialSections.length, 1626);

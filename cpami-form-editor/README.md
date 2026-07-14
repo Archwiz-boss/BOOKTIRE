@@ -65,6 +65,7 @@ http://192.168.1.100:8765/?token=本次啟動權杖
 - 由「下載範例 CSV／XML」產生 11 個資料群組各自可直接回匯的虛構範例。
 - 匯出固定 13 表、固定欄序、CRLF、CP950 的 `data.txt`。
 - 匯出前檢查主鍵、序號、數字格式、代碼／顯示文字及 CP950 亂碼風險。
+- 提供 PostgreSQL DDL、13 表 JSONB 投影 view，以及案件匯入／匯出與代碼落庫工具；編輯器執行期仍不依賴資料庫，完整操作方式見 `../db/README.md`。
 
 ## 下拉代碼來源
 
@@ -129,6 +130,7 @@ Access MDB 使用 32 位元 Jet Provider，請以 32 位元 Windows PowerShell �
 node --check .\web\app.js
 node .\tests\frontend_smoke_test.js
 python -X utf8 .\tests\core_unit_test.py
+python -X utf8 .\tests\pg_tools_test.py
 python -X utf8 .\tests\server_roundtrip_test.py
 ```
 

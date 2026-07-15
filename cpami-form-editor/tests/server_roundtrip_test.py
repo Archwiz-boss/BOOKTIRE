@@ -167,25 +167,18 @@ assert envelope_export_status == 200 and envelope_export == fixture
 
 field_count = sum(len(fields) for fields in bootstrap["fieldOrder"].values())
 real_roundtrip: bool | None = None
-bootstrap_matches_real: bool | None = None
+assert bootstrap["initialCase"] == "blank"
+assert bootstrap["sampleLoaded"] is False
+assert set(bootstrap["tables"]) == set(schema["tableOrder"])
+assert all(bootstrap["tables"][table] == [] for table in schema["tableOrder"])
 if DATA_PATH.exists():
-    assert bootstrap["sampleLoaded"] is True
     original = DATA_PATH.read_bytes()
     real_import, real_import_status = import_data_txt(original)
     real_export, _real_export_type, real_export_status = export_tables(real_import["tables"])
-    bootstrap_export, _bootstrap_export_type, bootstrap_export_status = export_tables(
-        bootstrap["tables"]
-    )
-    assert real_import_status == real_export_status == bootstrap_export_status == 200
+    assert real_import_status == real_export_status == 200
     real_roundtrip = real_export == original
-    bootstrap_matches_real = (
-        bootstrap["tables"] == real_import["tables"] and bootstrap_export == original
-    )
-    assert real_roundtrip and bootstrap_matches_real
+    assert real_roundtrip
 else:
-    assert bootstrap["sampleLoaded"] is False
-    assert set(bootstrap["tables"]) == set(schema["tableOrder"])
-    assert all(bootstrap["tables"][table] == [] for table in schema["tableOrder"])
     print("略過根目錄真實 data.txt roundtrip：檔案不存在。")
 
 report = {
@@ -199,7 +192,7 @@ report = {
         len(bootstrap["tableOrder"]),
         field_count,
         bootstrap["schemaVersion"],
-        bootstrap["sampleLoaded"],
+        bootstrap["initialCase"],
     ],
     "hasBulkButton": "批次表格" in index,
     "hasSampleButton": "下載範例 CSV／XML" in index,
@@ -243,7 +236,7 @@ report = {
         "extraElevatorRows": len(case_import["extraTables"]["BMELVTR"]),
     },
     "realRoundtrip": real_roundtrip,
-    "bootstrapMatchesReal": bootstrap_matches_real,
+    "bootstrapIsBlank": all(not rows for rows in bootstrap["tables"].values()),
 }
 
 assert index_status == app_status == styles_status == codebook_status == bootstrap_status == 200
@@ -265,7 +258,7 @@ assert bootstrap["extraFieldOrder"] == extension_schema["extraFieldOrder"]
 assert bootstrap["extraTableMeta"] == extension_schema["extraTableMeta"]
 assert set(bootstrap["extraTables"]) == set(extension_schema["extraTableOrder"])
 assert all(not rows for rows in bootstrap["extraTables"].values())
-assert isinstance(bootstrap["sampleLoaded"], bool)
+assert report["bootstrapIsBlank"]
 assert len(bootstrap["tableOrder"]) == 13 and field_count == 596
 copy_pairs = {
     "BMSLAN": [

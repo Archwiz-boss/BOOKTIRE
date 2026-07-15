@@ -57,26 +57,26 @@
 
 4. 改造 server.py：
    - 結構模板改讀 schema/data_txt_schema.json（找不到 schema 才是啟動錯誤）。
-   - 初始案件內容維持現行為：嘗試讀 ../data.txt；讀不到時不再當錯誤，
-     /api/bootstrap 回傳 tables 全空（所有表空陣列）並附 "sampleLoaded": false；
-     讀得到時附 "sampleLoaded": true。
+   - 初始案件一律為空白，不得自動讀取 ../data.txt；
+     /api/bootstrap 回傳 tables 全空（所有表空陣列）、`initialCase: "blank"`，
+     並保留 `sampleLoaded: false` 作相容欄位。
    - /api/bootstrap 回應加入 "schemaVersion"。
    - 匯入／驗證／匯出全部以 schema 為欄序與表序依據。
-   - 相容性要求：根目錄 data.txt 存在時，/api/bootstrap 的 tableOrder/fieldOrder/tables
-     與改造前完全一致，/api/export 輸出位元組不變。
+   - 根目錄 data.txt 是否存在都不得影響 /api/bootstrap；tableOrder／fieldOrder 保持 schema 定義，
+     tables 永遠全空。使用者主動匯入後，/api/export 的位元組 roundtrip 仍須不變。
 
 5. 前端 app.js 最小配合：bootstrap() 將 schemaVersion 存入 state；
-   sampleLoaded 為 false 時 setStatus 顯示「未載入案件，可載入 data.txt 或建立新空白案件」。
+   `initialCase` 為 `blank` 時建立可直接填寫的空白案件，setStatus 顯示「已建立空白案件，可以開始填寫或主動載入既有資料」。
    除此之外不改任何前端行為。
 
 6. 更新 tests/server_roundtrip_test.py：
    - roundtrip 斷言主體改為對 fixture：把 fixture 位元組 POST /api/import-data-txt，
      取回 tables 再 POST /api/export，結果必須與 fixture 逐位元組相同。
    - 對根目錄真實 data.txt 的 roundtrip 改為「檔案存在才執行」，不存在時印出略過訊息。
-   - 新增斷言：bootstrap 含 schemaVersion 且等於 schema JSON 的值；
-     13 表、596 欄的斷言保留。
+   - 新增斷言：bootstrap 含 schemaVersion 且等於 schema JSON 的值、`initialCase` 為 `blank`、
+     所有 tables 為空；13 表、596 欄的斷言保留。
 
-7. 更新 cpami-form-editor/README.md 啟動段：說明沒有 ../data.txt 也能啟動（空案件模式），
+7. 更新 cpami-form-editor/README.md 啟動段：說明一律以空白案件啟動、既有檔案須主動載入，
    以及 schema/data_txt_schema.json 的角色與重新產生方式。
 
 硬性限制：

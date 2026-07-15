@@ -22,7 +22,7 @@ source += `\nglobalThis.__test = {
   fieldDefinition, renderField, renderBulkControl, bulkColumnClass, sectionStartsOpen,
   useModalForOptions, renderInlineOptionMarkup, clearTableData, isDialogBackdropClick,
   fieldOrderFor, tableMetaFor, standardTablesPayload, extraTablesPayload, mergeCaseTables,
-  hasExtraData, caseEnvelope, visibleSections, visibleFields
+  hasExtraData, caseEnvelope, caseNewBlank, visibleSections, visibleFields
 };`;
 
 const context = {
@@ -67,7 +67,8 @@ app.state.formSet = "D";
 assert(app.visibleSections("BMSBASE").some(({ section }) => section.formSets?.includes("D")), "D-only BMSBASE sections must be visible in D");
 app.state.formSet = "A";
 assert(source.includes("state.schemaVersion = data.schemaVersion"));
-assert(source.includes("未載入案件，可載入 data.txt 或建立新空白案件"));
+assert(source.includes('data.initialCase === "blank"'));
+assert(source.includes("已建立空白案件，可以開始填寫或主動載入既有資料"));
 assert.equal(
   source.split("JSON.stringify(caseEnvelope())").length - 1,
   2,
@@ -77,6 +78,24 @@ assert(source.includes("formSet: state.formSet") && source.includes("tables: sta
 assert.equal(schema.schemaVersion, extensionSchema.schemaVersion);
 assert.equal(extensionSchema.extraTableOrder.length, 6);
 assert.equal(Object.values(extensionSchema.extraFieldOrder).reduce((sum, fields) => sum + fields.length, 0), 110);
+
+app.state.bootstrap = {
+  tableOrder: schema.tableOrder,
+  fieldOrder: schema.fieldOrder,
+  tableMeta: schema.tableMeta,
+  extraTableOrder: extensionSchema.extraTableOrder,
+  extraFieldOrder: extensionSchema.extraFieldOrder,
+  extraTableMeta: extensionSchema.extraTableMeta,
+};
+app.caseNewBlank("空白案件");
+assert.equal(app.state.sourceName, "空白案件");
+assert.equal(app.state.tables.BMSBASE.length, 1, "A blank case must be immediately editable");
+assert.equal(app.state.tables.BMSBASE[0].LAST_MODIFY, "00001");
+for (const table of [...schema.tableOrder, ...extensionSchema.extraTableOrder]) {
+  if (table !== "BMSBASE") assert.equal(app.state.tables[table].length, 0, `${table} must start empty`);
+}
+app.state.tables.BMSBASE[0].BMPAS = "I80";
+
 assert.equal(codebook.version, 2);
 assert.equal(codebook.source.bldcodeRows, 22383);
 assert.equal(codebook.officialSections.length, 1626);

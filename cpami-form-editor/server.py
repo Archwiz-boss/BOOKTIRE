@@ -23,22 +23,14 @@ from cpami_core import DataTxtError
 APP_ROOT = Path(__file__).resolve().parent
 WEB_ROOT = APP_ROOT / "web"
 SCHEMA_PATH = APP_ROOT / "schema" / "data_txt_schema.json"
-SAMPLE_PATH = APP_ROOT.parent / "data.txt"
 MAX_BODY = 96 * 1024 * 1024
 
 
-def load_initial_tables(schema: dict[str, Any]) -> tuple[dict[str, list[dict[str, str]]], bool]:
-    try:
-        raw = SAMPLE_PATH.read_bytes()
-    except OSError:
-        return {table: [] for table in schema["tableOrder"]}, False
-    parsed = core.parse_data_txt_bytes(raw)
-    core.assert_parsed_matches_schema(parsed, schema)
-    return parsed["tables"], True
+def empty_case_tables(schema: dict[str, Any]) -> dict[str, list[dict[str, str]]]:
+    return {table: [] for table in schema["tableOrder"]}
 
 
 SCHEMA = core.load_schema(SCHEMA_PATH)
-INITIAL_TABLES, SAMPLE_LOADED = load_initial_tables(SCHEMA)
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -138,16 +130,17 @@ class Handler(SimpleHTTPRequestHandler):
                 "extraTableOrder": copy.deepcopy(SCHEMA.get("extraTableOrder", [])),
                 "extraFieldOrder": copy.deepcopy(SCHEMA.get("extraFieldOrder", {})),
                 "extraTableMeta": copy.deepcopy(SCHEMA.get("extraTableMeta", {})),
-                "tables": copy.deepcopy(INITIAL_TABLES),
+                "tables": empty_case_tables(SCHEMA),
                 "extraTables": {
                     table: [] for table in SCHEMA.get("extraTableOrder", [])
                 },
-                "sampleLoaded": SAMPLE_LOADED,
+                "initialCase": "blank",
+                "sampleLoaded": False,
             }
             self.send_json(data)
             return
         if path == "/api/health":
-            self.send_json({"ok": True, "sample": str(SAMPLE_PATH)})
+            self.send_json({"ok": True, "initialCase": "blank"})
             return
         super().do_GET()
 
@@ -270,10 +263,7 @@ def main() -> None:
             print(f"  http://本機區域網路IP:{args.port}/?token={server.access_token}")  # type: ignore[attr-defined]
         print("請勿把不含權杖的服務直接暴露到公網。")
     print(f"格式結構：{SCHEMA_PATH}")
-    if SAMPLE_LOADED:
-        print(f"初始案件：{SAMPLE_PATH}")
-    else:
-        print("初始案件：未載入（空案件模式）")
+    print("初始案件：空白（data.txt 只在使用者主動選取後載入）")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

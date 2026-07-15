@@ -9,7 +9,7 @@
 | 事實 | 對接的意涵 |
 |---|---|
 | 一份 `data.txt` = 一個案件：13 表、596 欄、固定欄序，值全部是字串 | 資料庫要保真字串語意（前導零、空字串 vs 0），不能貿然轉型 |
-| 伺服器以版控內 schema 啟動；根目錄 `data.txt` 只作可選初始案件 | 格式結構與案件內容已拆離，無真實案件也能進入空案件模式 |
+| 伺服器以版控內 schema 啟動；每次啟動都建立空白案件，根目錄 `data.txt` 不會自動載入 | 格式結構與案件內容完全拆離；既有案件只能由使用者主動載入 |
 | 解析／驗證／序列化集中在標準庫模組 `cpami_core.py` | 內部系統可直接 import 同一套格式引擎，不需經 HTTP |
 | 匯出有位元組級 roundtrip 測試保證 | 這是對接後也必須維持的最高驗收標準 |
 | `web/codebook.json`：43 種 CODE_TYPE、22,383 筆舊代碼＋1,626 筆官方地段 | 內部系統要查代碼名稱時，這份就是來源，可直接落庫 |
@@ -133,6 +133,49 @@ CROSS JOIN LATERAL jsonb_array_elements(d.payload->'tables'->'BMSLAN') AS r;
 - 不加 `UNIQUE(index_key)`；同一案件可能有多版草稿。匯入工具以 `(index_key, form_set, status='draft')` 做 upsert 判斷，規則寫在工具說明。
 - 子表列的識別：`(case_id, 表名, person_seq)`；`person_seq` 在匯出時由格式引擎重排，DB 不另設序號。
 
+### 3.5 可重用人員／單位範本（契約預留，尚未建表）
+
+範本是跨案件重用的主檔片段，不是案件文件，也不能直接保存某一列的全部原始欄位。初期範圍如下：
+
+| `templateKind` | 使用者看到的類別 | 目標資料表 | 可保存範圍 |
+|---|---|---|---|
+| `applicant` | 起造人 | `BMSP01` | 姓名／公司、證號、代表人、電話、Email、戶籍／公司地址及通訊地址 |
+| `designer` | 設計建築師 | `BMSP02` | 建築師、開業證書、事務所與聯絡資料 |
+| `supervisor` | 監造建築師 | `BMSP03` | 建築師、開業證書、事務所與聯絡資料 |
+| `contractor` | 承造人 | `BMSP04` | 營造業、負責人、登記證、專任工程人員與聯絡資料 |
+| `technician` | 專業技師 | `BM_TEC` | 技師類別、姓名、證書／執照、事務所與聯絡資料 |
+
+`BMSP02` 是舊格式中的「設計人（建築師）」；`BMSP03` 才是監造建築師。畫面文案與範本類別應保持這個區分。
+
+範本交換物件預定使用以下形狀；`fields` 中的值仍全部是字串：
+
+```json
+{
+  "templateVersion": "1",
+  "schemaVersion": "2026-07-14.2",
+  "templateKind": "designer",
+  "name": "王範例／範例建築師事務所",
+  "sourceTable": "BMSP02",
+  "fields": {
+    "CNAME": "王範例",
+    "OFFICE_NAME": "範例建築師事務所",
+    "TEL_NO": "04-12345678",
+    "eMail": "architect@example.com"
+  }
+}
+```
+
+資料保全規則：
+
+1. 儲存與套用都由伺服器依 `templateKind` 的欄位 allowlist 過濾；不能相信前端送來的任意欄名。
+2. 一律排除 `INDEX_KEY`（含不同大小寫）、`person_seq`／`PERSON_SEQ`／`Person_seq`、`SPOKESMAN`、`識別碼`、`CR_DATE`、`UP_DATE`、`OP_USER`。
+3. 起造人範本另排除棟別、戶號、建築物門牌與用途關係；`BUILDING_NO`、`CHWANG`、`DONG`、`FLOOR`、`HOUSE`、無前綴的 `ADDR*`、`BLD_CODE*` 必須由每個案件自行填寫。
+4. 套用時預設只填空白欄位；若使用者選擇覆蓋既有內容，必須先清楚列出影響範圍並確認。
+5. 套用後沿用現有資料保全規則重新編排列序與 `SPOKESMAN`，不從範本帶入案件鍵或稽核欄位。
+6. `schemaVersion` 不相容時由伺服器遷移或拒絕，前端不得自行猜測欄位對應。
+
+未來 PostgreSQL 以 `cpami_data_templates` 保存，預定欄位為 `template_id uuid`、`template_kind`、`name`、`source_table`、`schema_version`、`payload jsonb`、`created_by`（內部身分識別）、`is_active`、`created_at`、`updated_at`；查詢索引以 `(template_kind, is_active, name)` 為主。本次不把這個草案加入 `db/schema.sql`，也不執行建表。
+
 ## 4. 案件 JSON 封套（唯一的案件交換表示法）
 
 ```json
@@ -196,6 +239,18 @@ GET  /api/cases/{caseId}        → 案件封套
 PUT  /api/cases/{caseId}        → 存草稿（body=案件封套；成功回驗證報告）
 POST /api/cases/{caseId}/export → data.txt（同 /api/export 語意）
 ```
+
+預留的範本 API 形狀（**現在不實作**）：
+
+```text
+GET    /api/templates?kind=designer → 範本摘要清單
+GET    /api/templates/{templateId}  → 單一範本交換物件
+POST   /api/templates               → 從允許欄位建立範本
+PUT    /api/templates/{templateId}  → 更新名稱或允許欄位
+DELETE /api/templates/{templateId}  → 停用範本（soft delete）
+```
+
+前端後續另設 `templateStore` 對接這組 API；`caseStore` 仍只管理案件，不把範本混進案件封套。
 
 ## 7. 風險與注意事項
 

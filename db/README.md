@@ -119,6 +119,10 @@ python -X utf8 .\cpami-form-editor\tools\pg_export.py `
 5. 需要送回舊系統時，用 `pg_export.py` 產生 data.txt。
 6. 若整合線上編輯器，只替換前端 `caseStore` 對接內部 cases API；不要把 DB 依賴放入 `server.py` 或 `web/`。
 
+## 尚未實作：可重用資料範本
+
+目前 `schema.sql` 只包含工程、案件文件與代碼庫，尚未建立起造人、設計／監造建築師、承造人或技師範本資料表。後續會以獨立的 `cpami_data_templates` 與 `templateStore` API 實作，不把範本混入案件 JSONB；欄位 allowlist、排除案件鍵與套用規則見 `../docs/POSTGRES_INTEGRATION_PLAN.md` §3.5。
+
 ## 測試
 
 沒有 PostgreSQL 也能執行離線測試：

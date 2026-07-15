@@ -570,7 +570,7 @@ const state = {
   activeTableByFormSet: { A: "BMSBASE", B: "BMSSC", C: "C21_3", D: "BMSBASE" },
   activeTable: "BMSBASE",
   activeRecord: 0,
-  sourceName: "內建 data.txt 範本",
+  sourceName: "空白案件",
   sourceRows: [],
   sourceHeaders: [],
   mappings: {},
@@ -1613,6 +1613,7 @@ async function caseBootstrap() {
   state.schemaVersion = data.schemaVersion;
   state.codebook = codebook;
   state.tables = mergeCaseTables(data.tables, data.extraTables);
+  if (data.initialCase === "blank") caseNewBlank("空白案件");
   return data;
 }
 
@@ -1645,7 +1646,7 @@ async function caseImportJson(file) {
   return data;
 }
 
-function caseNewBlank() {
+function caseNewBlank(sourceName = "新空白案件") {
   const emptyTables = {};
   for (const table of [...state.bootstrap.tableOrder, ...state.bootstrap.extraTableOrder]) emptyTables[table] = [];
   state.tables = emptyTables;
@@ -1660,7 +1661,7 @@ function caseNewBlank() {
   state.activeTable = "BMSBASE";
   state.activeTableByFormSet = { A: "BMSBASE", B: "BMSSC", C: "C21_3", D: "BMSBASE" };
   state.activeRecord = 0;
-  state.sourceName = "新空白案件";
+  state.sourceName = sourceName;
 }
 
 function caseValidate() {
@@ -2092,12 +2093,7 @@ async function bootstrap() {
     $("#targetTableSelect").innerHTML = tableOptions;
     $("#sampleTableSelect").innerHTML = tableOptions;
     renderAll();
-    setStatus(
-      data.sampleLoaded
-        ? "資料已就緒，可以開始編輯"
-        : "未載入案件，可載入 data.txt 或建立新空白案件",
-      "ok",
-    );
+    setStatus("已建立空白案件，可以開始填寫或主動載入既有資料", "ok");
   } catch (error) {
     setStatus("無法連接本機格式服務", "error");
     toast(error.message, "error");

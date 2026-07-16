@@ -133,7 +133,7 @@ CROSS JOIN LATERAL jsonb_array_elements(d.payload->'tables'->'BMSLAN') AS r;
 - 不加 `UNIQUE(index_key)`；同一案件可能有多版草稿。匯入工具以 `(index_key, form_set, status='draft')` 做 upsert 判斷，規則寫在工具說明。
 - 子表列的識別：`(case_id, 表名, person_seq)`；`person_seq` 在匯出時由格式引擎重排，DB 不另設序號。
 
-### 3.5 可重用人員／單位範本（契約預留，尚未建表）
+### 3.5 可重用人員／單位範本（SQLite 已實作，PostgreSQL 尚未建表）
 
 範本是跨案件重用的主檔片段，不是案件文件，也不能直接保存某一列的全部原始欄位。初期範圍如下：
 
@@ -174,7 +174,9 @@ CROSS JOIN LATERAL jsonb_array_elements(d.payload->'tables'->'BMSLAN') AS r;
 5. 套用後沿用現有資料保全規則重新編排列序與 `SPOKESMAN`，不從範本帶入案件鍵或稽核欄位。
 6. `schemaVersion` 不相容時由伺服器遷移或拒絕，前端不得自行猜測欄位對應。
 
-未來 PostgreSQL 以 `cpami_data_templates` 保存，預定欄位為 `template_id uuid`、`template_kind`、`name`、`source_table`、`schema_version`、`payload jsonb`、`created_by`（內部身分識別）、`is_active`、`created_at`、`updated_at`；查詢索引以 `(template_kind, is_active, name)` 為主。本次不把這個草案加入 `db/schema.sql`，也不執行建表。
+目前暫時版本已由 `Start_CPAMI_Editor_SQLite.bat`、`sqlite_server.py`、`sqlite_templates.py` 與 `sqlite/schema.sql` 實作相同邊界；SQLite 只保存範本，完整案件仍留在瀏覽器／匯出檔。執行期資料庫在已忽略版控的 `runtime/sqlite/`。
+
+未來 PostgreSQL 以 `cpami_data_templates` 保存，預定欄位為 `template_id uuid`、`template_kind`、`name`、`source_table`、`schema_version`、`payload jsonb`、`created_by`（內部身分識別）、`is_active`、`created_at`、`updated_at`；查詢索引以 `(template_kind, is_active, name)` 為主。目前仍不把這個草案加入 `db/schema.sql`。
 
 ## 4. 案件 JSON 封套（唯一的案件交換表示法）
 
@@ -240,7 +242,7 @@ PUT  /api/cases/{caseId}        → 存草稿（body=案件封套；成功回驗
 POST /api/cases/{caseId}/export → data.txt（同 /api/export 語意）
 ```
 
-預留的範本 API 形狀（**現在不實作**）：
+範本 API 已在本機 SQLite 模式實作；未來 PostgreSQL 介面沿用相同形狀：
 
 ```text
 GET    /api/templates?kind=designer → 範本摘要清單
@@ -250,7 +252,7 @@ PUT    /api/templates/{templateId}  → 更新名稱或允許欄位
 DELETE /api/templates/{templateId}  → 停用範本（soft delete）
 ```
 
-前端後續另設 `templateStore` 對接這組 API；`caseStore` 仍只管理案件，不把範本混進案件封套。
+前端已用獨立範本流程對接這組 API；`caseStore` 仍只管理案件，不把範本混進案件封套。PostgreSQL cases API 與身分／權限整合仍是後續工作。
 
 ## 7. 風險與注意事項
 

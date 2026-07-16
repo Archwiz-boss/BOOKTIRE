@@ -106,7 +106,7 @@
 | 案件識別 | `INDEX_KEY`、`BMPAS`、`GOV`、`BUILDING_CATEGORY`、`APPLY_TYPE`、`BUILDING_NAME`、`FILENAME`、`LICENSE`、`LICENSE_OLD`、`SEQ_NO`、`LAST_MODIFY` | 案件主檔；`INDEX_KEY` 可由轉檔器產生 |
 | 案件旗標 | `PUBLIC_CODE`、`LINK_TYPE`、`TempBuild` | Y／N／空白 |
 | 建築線 | `BUILDING_LINE_WORD`、`BUILDING_LINE_NO`、`BUILDING_DATE` | 指定文號與民國日期 |
-| 法規 | `LAW_COVER_RATE`、`LAW_SPACE_RATE`、`LAW_01`、`LAW_03` | 法定建蔽容積與法規版本代碼 |
+| 法規 | `LAW_COVER_RATE`、`LAW_SPACE_RATE`、`LAW_01`、`LAW_02`、`LAW_02_DOC`、`LAW_03` | 法定建蔽容積、防火避難／耐震版本，以及性能設計認可日期與文號 |
 | 基地面積 | `BASE_AREA_ARC`、`BASE_AREA_SHRINK`、`BASE_AREA_OTHER`、`BASE_AREA_PURPOSE`、`BASE_AREA_TOTAL`、`STATUTORY_OPEN_SPACE` | 面積計算資料，單位㎡ |
 | 土地分區 | `USE_CATEGORY_CODE1..3` | KIN 代碼；須與 `BMPAS` 一起查 |
 | 建築概要 | `BUIL_AREA_ARC`、`BUIL_AREA_OTHER`、`BUILDING_AREA`、`TOTAL_CONSTRU_AREA`、`BUILD_COVER_RATE`、`SPACE_RATE` | 建築／樓地板面積與實設比率 |
@@ -148,6 +148,10 @@
 | `MEMO_SEQ_NAME` | 代碼顯示名稱，例如「火災警報器」 |
 | `DESE` | 本案實際備註全文 |
 | `person_seq` | 顯示順序 |
+
+舊二維系統的 `Build.mdb/Bldcode` 另有 6 個規定備註分類、52 個「程序、屬性」與 89 則預設全文。分類只負責先過篩，不寫入 `data.txt`；使用者選定內容後，要把程序代碼、程序名稱與全文一起寫入上述三個業務欄位。自由備註允許代碼與名稱留白。`DESE` 最長 230 字，插入預設內容後仍應允許人工修改。
+
+`BMSBASE.A12_TITTLE` 與 `A12_5TITLE` 是書表長文字，不是規定備註列；兩者可各自保存為共用範本，但套用時仍要落在案件主檔原欄位。
 
 ### `BMSP01` 起造人－棟戶－門牌關係
 
@@ -222,6 +226,8 @@
 | 停車各分類 | `1` | 平面／小型車／法定／室內／地上 | 要依欄位的代碼類型分別解讀 |
 | 法規 `LAW_01` | `41` | 112/5/10 建築技術規則版本 | `BMLAW1` |
 | 法規 `LAW_03` | `05` | 113/3/1 耐震設計規範版本 | `BMLAW2` |
+
+`LAW_01`、`LAW_03` 的歷史選項另由舊程式 `Build.mdb` 補充；`LAW_02` 是性能設計認可日期，`LAW_02_DOC` 是認可通知書文號，兩者不可誤接到 `BMLAW2`。這些舊選項只供相容輸入，不代表個案最新法令判定。
 
 ## 建議 XML／CSV 對接方式
 

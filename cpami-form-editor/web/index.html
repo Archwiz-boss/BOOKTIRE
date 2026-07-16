@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CPAMI 二維書表資料編輯器</title>
+  <link rel="icon" href="data:,">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -13,23 +14,36 @@
       <h1>建照書表資料編輯器</h1>
     </div>
     <div class="toolbar" aria-label="檔案工具">
-      <button class="button secondary" id="loadDataButton" type="button">載入 data.txt</button>
+      <button class="button secondary" id="loadDataButton" type="button" title="也可以直接將檔案拖進此頁">載入 data.txt／ZIP</button>
       <button class="button secondary" id="openConvertButton" type="button">匯入 CSV／XML</button>
       <details class="action-menu" id="actionMenu">
         <summary class="button ghost">更多</summary>
         <div class="action-menu-panel">
-          <button id="newCaseButton" type="button">新空白案件</button>
+          <button id="newCaseButton" type="button">全案清空</button>
           <button id="loadCaseJsonButton" type="button">載入完整案件 JSON</button>
           <button id="exportCaseJsonButton" type="button">匯出完整案件 JSON</button>
           <button id="openSamplesButton" type="button">下載範例 CSV／XML</button>
           <button id="validateButton" type="button">檢查資料</button>
         </div>
       </details>
-      <button class="button primary" id="exportButton" type="button">匯出 data.txt</button>
-      <input id="dataFileInput" type="file" accept=".txt,text/plain" hidden>
+      <details class="action-menu" id="exportMenu">
+        <summary class="button primary">匯出</summary>
+        <div class="action-menu-panel">
+          <button id="exportDataTxtButton" type="button">匯出 data.txt</button>
+          <button id="exportZipButton" type="button" disabled>匯出原 ZIP（替換 data.txt）</button>
+        </div>
+      </details>
+      <input id="dataFileInput" type="file" accept=".txt,.zip,text/plain,application/zip,application/x-zip-compressed" hidden>
       <input id="caseJsonFileInput" type="file" accept=".json,application/json" hidden>
     </div>
   </header>
+
+  <div class="file-drop-overlay" id="fileDropOverlay" aria-hidden="true">
+    <div class="file-drop-card">
+      <strong>放開以載入案件</strong>
+      <span>支援 data.txt 或含有 data.txt 的 ZIP</span>
+    </div>
+  </div>
 
   <div class="statusbar" role="status">
     <span class="status-dot" id="statusDot"></span>
@@ -71,6 +85,7 @@
           <button class="record-button" id="copyRecordButton" type="button" title="複製目前記錄">複製</button>
           <button class="record-button danger" id="deleteRecordButton" type="button" title="刪除目前記錄">刪除</button>
           <div class="page-actions">
+            <button class="button secondary compact" id="templateButton" type="button" hidden>共用範本</button>
             <button class="button secondary compact" id="bulkEditButton" type="button">批次輸入</button>
             <button class="button danger-button compact" id="clearCurrentTableButton" type="button">清空本頁</button>
           </div>
@@ -81,6 +96,8 @@
         <summary>填寫提醒</summary>
         <p id="tableNoticeText"></p>
       </details>
+
+      <section id="tableAssistant" class="table-assistant" aria-label="快速填寫工具" hidden></section>
 
       <section class="field-panel" id="editorFieldPanel">
         <div class="field-tools">
@@ -169,6 +186,17 @@
       <button class="button danger-button" id="bulkDeleteButton" type="button">刪除勾選列</button>
       <span class="bulk-tip">可直接貼上 Excel／CSV 多列資料</span>
     </div>
+    <div class="bulk-comparison-bar" id="bulkComparisonBar" hidden>
+      <div class="bulk-comparison-status">
+        <span>目前顯示</span>
+        <strong id="bulkComparisonViewLabel">本次資料</strong>
+        <span class="bulk-difference-legend"><i aria-hidden="true"></i>紅點表示與另一側不同</span>
+      </div>
+      <div class="bulk-comparison-actions">
+        <button class="button secondary" id="bulkComparisonToggleButton" type="button">切換至變更前資料</button>
+        <button class="button primary" id="bulkCopyAllToOldButton" type="button">全部帶入變更前資料</button>
+      </div>
+    </div>
     <div id="bulkTableArea" class="bulk-table-area"></div>
     <div class="dialog-actions">
       <button class="button primary" data-close-dialog="bulkDialog" type="button">完成</button>
@@ -190,6 +218,63 @@
     <div class="dialog-actions">
       <button class="button secondary" data-close-dialog="clearTableDialog" type="button">取消</button>
       <button class="button danger-button" id="confirmClearTableButton" type="button">確認清空本頁</button>
+    </div>
+  </dialog>
+
+  <dialog id="clearCaseDialog" class="dialog confirm-dialog" aria-describedby="clearCaseMessage">
+    <div class="dialog-head warning-dialog-head">
+      <div>
+        <p class="eyebrow">全案清除警告</p>
+        <h2>清空目前案件</h2>
+      </div>
+      <button class="close-button" data-close-dialog="clearCaseDialog" type="button" aria-label="關閉">×</button>
+    </div>
+    <div class="confirm-content">
+      <p id="clearCaseMessage">確定要清除目前畫面中的所有案件資料嗎？</p>
+      <div class="warning-box">尚未匯出的修改將無法復原。清空後會建立新的空白案件；若 SQLite 模式設有非空白預設範本，將自動帶入對應的人員、單位、案件備註或書表長文字。</div>
+    </div>
+    <div class="dialog-actions">
+      <button class="button secondary" data-close-dialog="clearCaseDialog" type="button">取消</button>
+      <button class="button danger-button" id="confirmClearCaseButton" type="button">確認全案清空</button>
+    </div>
+  </dialog>
+
+  <dialog id="templateDialog" class="dialog template-dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="eyebrow">SQLite 共用資料</p>
+        <h2 id="templateDialogTitle">共用範本</h2>
+      </div>
+      <button class="close-button" data-close-dialog="templateDialog" type="button" aria-label="關閉">×</button>
+    </div>
+    <div class="template-content">
+      <div class="muted-box" id="templateScopeMessage">範本只保存此資料群組允許共用的欄位，不保存完整案件。</div>
+      <div class="template-grid">
+        <label class="control">
+          <span>已儲存範本</span>
+          <select id="templateSelect"></select>
+        </label>
+        <label class="control">
+          <span>範本名稱</span>
+          <input id="templateNameInput" type="text" maxlength="80" placeholder="例如：王大明建築師事務所">
+        </label>
+      </div>
+      <fieldset id="templateFieldChoices" class="template-field-choices" hidden>
+        <legend>這個範本要保存哪些長文字</legend>
+      </fieldset>
+      <div class="template-options">
+        <label><input id="templateDefaultCheckbox" type="checkbox"> 設為此類別的預設範本（全案清空時自動帶入）</label>
+        <label><input id="templateOverwriteCheckbox" type="checkbox"> 套用時允許覆蓋目前已有內容</label>
+      </div>
+      <div class="muted-box" id="templateSummary">尚未儲存範本。請先在本頁填入資料，再輸入名稱並新增。</div>
+    </div>
+    <div class="dialog-actions template-dialog-actions">
+      <button class="button danger-button" id="deleteTemplateButton" type="button" disabled>刪除範本</button>
+      <span class="dialog-action-spacer"></span>
+      <button class="button secondary" data-close-dialog="templateDialog" type="button">關閉</button>
+      <button class="button secondary" id="applyTemplateButton" type="button" disabled>套用範本</button>
+      <button class="button secondary" id="updateTemplateButton" type="button" disabled>以目前資料更新</button>
+      <button class="button primary" id="saveTemplateButton" type="button">新增範本</button>
     </div>
   </dialog>
 

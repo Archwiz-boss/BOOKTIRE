@@ -22,9 +22,9 @@
 分層鐵則：
 
 - **格式知識只住在伺服器端**（`server.py`，未來抽為 `cpami_core.py`）：CP950 解析、驗證、序列化。前端永遠只碰 JSON 與 UTF-8，不做任何編碼工作。
-- **代碼唯一來源是 `web/codebook.json`**（22,383 筆舊系統代碼＋1,626 筆臺中市官方地段，43 種 CODE_TYPE）。只能用 `export_codebook.ps1` 重新產生，不得手改內容；`app.js` 的 `CODE_OPTIONS` 僅作缺漏備援。
+- **代碼唯一來源是 `web/codebook.json`**（22,383 筆舊系統代碼＋1,626 筆臺中市官方地段，43 種 CODE_TYPE，另含從 `Build.mdb` 唯讀萃取的臺中規定備註、新版適用法令與常用文字）。只能用 `export_codebook.ps1` 重新產生，不得手改內容；`app.js` 的 `CODE_OPTIONS` 僅作缺漏備援。
 - **書表目錄的唯一來源是 codebook 的 `ALLRPT`**（109 筆）。code 欄的分組：`A` 建照申請 22、`B` 施工管理 14（含 B13-2-2）、`C` 使用管理 13、`D` 拆除執照 3、`E` 室內裝修 9、`F` 技師簽證報告 1（mark 為 BM_TEC）、`G` B14 施工勘驗系列 5、`H` 農舍管制註記清冊 2，其餘為縣市附表（I30、I40、I80 等）。新增書表組時從這裡取清單，不要手抄畫面截圖。
-- 編輯器執行期禁止引入任何資料庫依賴；PostgreSQL 相關只允許存在 `db/` 與 `tools/`（見 `docs/POSTGRES_INTEGRATION_PLAN.md`）。
+- 一般模式 `server.py` 禁止引入資料庫依賴；只有使用獨立 `sqlite_server.py`／`Start_CPAMI_Editor_SQLite.bat` 時，才允許以 Python 標準庫 SQLite 保存共用範本。SQLite 不得保存完整案件，執行期檔案只放在已忽略版控的 `runtime/`。PostgreSQL 案件整合仍只放在 `db/` 與 `tools/`（見 `docs/POSTGRES_INTEGRATION_PLAN.md`）。
 
 ## 2. data.txt 格式鐵則（違反即擋，不可協商）
 
@@ -39,6 +39,7 @@
 9. 欄名（含 `person_seq`、`eMail` 等大小寫不一致者）是舊系統契約，禁止「訂正」拼寫或大小寫。
 10. 前端未顯示的系統／相容欄位（含 `BM_TEC`、`BMSSC`）在載入、編輯、匯出全程保留原值。
 11. 匯出時即使某個子表沒有使用者資料，也要輸出一筆完整欄序的空白記錄；不可只寫表名，已通過主檔驗證的稀疏案件也必須能重新匯入並核對 596 欄。
+12. 從 ZIP 載入後若 `data.txt` 未改動，匯出必須逐位元組回傳原 ZIP；有改動才替換 `data.txt`。舊二維的小型封裝必須維持一般 ZIP 2.0，不得將其他小檔強制標成 ZIP64，否則舊系統會以錯誤 517 拒絕匯入。
 
 欄位語意、代碼對應、報表計算欄位回推，一律以根目錄兩份對應表文件為準；文件沒寫的，回 `cpami/Arch2016C/fsrp/frx*.fr3` 與 MDB 查證，不要猜。
 
@@ -47,7 +48,7 @@
 - 根目錄 `data.txt` 是真實案件（身分證字號、地址、電話）：不得提交進 git、不得貼進雲端服務、不得出現在測試碼與文件範例中。
 - 測試與範例一律用虛構資料，沿用既有慣例：「範例建設股份有限公司」「王範例」「A123456789」「臺中市範例區範例路」。
 - `cpami/` 是第三方程式與真實案件輸出：唯讀、不入版控。
-- 對外連線的一次性權杖機制（`authorize_request`）不得移除或弱化；本服務無 HTTPS，文件必須持續提醒以 VPN／可信區網使用。
+- `authorize_request` 僅允許回環位址、RFC 1918 私有 IPv4、IPv6 ULA／link-local 免權杖；其他來源的一次性權杖與 HttpOnly／SameSite Cookie 機制不得移除或弱化。本服務無 HTTPS，文件必須持續提醒以 VPN／可信內網使用。
 
 ## 4. UI/UX 設計原則（新增任何頁面、資料群組、書表組一律遵循）
 
@@ -58,12 +59,13 @@
 5. **收合節奏**：欄位分區用 `<details class="field-section">`；`_OLD`（原核准）區段預設收合；「填寫提醒」「填寫說明」預設收起；提供「全部收合／展開」；開合狀態記在 `state.sectionOpen`。
 6. **Modal 慣例**：`<dialog>` ＋ `.dialog-head`（eyebrow＋標題＋右上 × 關閉）＋ `.dialog-actions`；點擊背景可關閉；危險操作（清空、刪除多列）先出警告 modal 並寫明影響範圍。
 7. **版面穩定**：`html { overflow-y: scroll; scrollbar-gutter: stable }`；modal 清單預留捲軸空間；內容寬度不得跳動。
-8. **批次表格**：全選↔取消全選同一顆按鈕、新增 1／10 列、複製／刪除勾選列、支援 Excel／TSV／CSV 矩形貼上、首列若為原始欄名或中文欄名自動視為標題、欄寬依欄位類型緊湊化（`bulkColumnClass`）、關閉時自動保留修改並重排 `person_seq`／`SPOKESMAN`。
+8. **批次表格**：全選↔取消全選同一顆按鈕、新增 1／10 列、複製／刪除勾選列、支援 Excel／TSV／CSV 矩形貼上、首列若為原始欄名或中文欄名自動視為標題、欄寬依欄位類型緊湊化（`bulkColumnClass`）、關閉時自動保留修改並重排 `person_seq`／`SPOKESMAN`。有本次／原核准配對的表格須沿用 `COPY_CURRENT_TO_OLD` 切換兩側與整批帶入；逐列及逐欄差異都以紅點標示，空白與 `0` 不得視為相同。
 9. **狀態回饋**：statusbar 三態（ok／warn／error）＋來源名稱；toast 約 4 秒自動消失；任何修改立即 `setStatus("...尚未匯出", "warn")`。
 10. **色彩 tokens**：一律使用 `styles.css` 的 CSS 變數——`--navy` 頂欄、`--amber` 主要動作、`--paper`／`--canvas` 背景、`--green`／`--red` 狀態、danger 按鈕紅字淡紅底。不要引入新的裸色碼。
 11. **響應式**：桌面側欄固定 224px；≤920px 側欄轉為橫向捲動列（項目 min-width 165px）。新側邊欄元件必須同時處理這兩種型態。
 12. **資料保全**：新增／複製記錄時清空 `識別碼`、`CR_DATE`、`UP_DATE`、`OP_USER`；`person_seq` 依列序重編；`SPOKESMAN` 首列 `Y` 其餘 `N`；「清空本頁」只清目前群組且保留案件 `INDEX_KEY`。
 13. **無障礙**：互動元件要有 `aria-label`／`aria-pressed`；動態清單用 `role="listbox"`／`role="option"`；toast 區 `aria-live="polite"`。
+14. **範本與全案清空**：共用範本只能保存後端 allowlist 內的非空白人員／單位、案件備註或書表長文字欄位；預設套用只填空白值，案件備註則新增一列或使用既有空白列，覆蓋既有值必須由使用者明確勾選。全案清空須用警告 Modal，清空後才套用非空白預設範本；任何 data.txt、ZIP 或完整案件 JSON 匯入都直接覆寫案件，不得混入預設值。
 
 ## 5. 程式風格
 
@@ -80,6 +82,7 @@
 
 - `node --check .\web\app.js` — 語法檢查，改 app.js 必跑。
 - `node .\tests\frontend_smoke_test.js` — 前端煙霧測試（vm 載入 app.js 頂部區段），改前端必跑。
+- `python -X utf8 .\tests\sqlite_template_test.py` — SQLite 範本 allowlist、預設唯一性、生命週期與 HTTP API；改範本功能必跑。
 - 先啟動 `python -X utf8 .\server.py`，再跑 `python -X utf8 .\tests\server_roundtrip_test.py` — 含位元組級 roundtrip，改伺服器或匯出邏輯必跑。
 - `tests/network_access_test.py` — 權杖／回環驗證，改連線與授權邏輯時跑。
 

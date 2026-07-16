@@ -45,11 +45,16 @@ const TABLE_CONFIG = {
         N("SEQ_NO", "案件版本／序號"), F("LAST_MODIFY", "最後修改版號", { hint: "文字欄，需保留前導 0。" }),
         Y("PUBLIC_CODE", "是否供公眾使用"), Y("LINK_TYPE", "是否為連結案件"), Y("TempBuild", "是否為臨時建築物"),
       ]),
-      S("建築線與法規", [
+      S("建築線與法定比率", [
         F("BUILDING_LINE_WORD", "建築線文號字別"), F("BUILDING_LINE_NO", "建築線文號號碼"), D("BUILDING_DATE", "建築線指定日期"),
         N("LAW_COVER_RATE", "法定建蔽率（%）"), N("LAW_SPACE_RATE", "法定容積率（%）"),
-        C("LAW_01", "建築技術規則版本代碼"), C("LAW_03", "耐震規範版本代碼"),
       ]),
+      S("適用法令概要", [
+        C("LAW_01", "防火及防火避難適用版本", { hint: "取自舊二維系統 BMLAW1；畫面顯示版本名稱，匯出保留原始代碼。" }),
+        D("LAW_02", "防火避難性能設計認可日期", { hint: "僅有性能設計認可通知書時填寫，格式為民國 yyyMMdd。" }),
+        F("LAW_02_DOC", "性能設計認可通知書文號", { wide: true }),
+        C("LAW_03", "耐震設計規範適用版本", { hint: "取自舊二維系統 BMLAW2；畫面顯示規範版本，匯出保留原始代碼。" }),
+      ], { note: "LAW_01 是防火及防火避難版本；LAW_03 是耐震設計規範版本。LAW_02／LAW_02_DOC 不是版本代碼，而是性能設計認可日期與通知書文號。" }),
       S("施工管理與展期", [
         D("RECEIVE_LICE_DATE", "領照日期"), D("Start_work_pre_date", "預定開工日期"), D("Start_work_permit_date", "核准開工日期"),
         D("COMPLETE_DATE", "預定竣工日期"), D("Complete_permit_date", "核准竣工日期"), D("IDENTIFY_LICE_DATE", "執照核發日期"),
@@ -64,7 +69,7 @@ const TABLE_CONFIG = {
         F("LICENSE_USE", "使用執照字號", { wide: true }), D("IDENTIFY_LICE_DATE_USE", "使用執照核發日期"), D("RECEIVE_LICE_DATE_USE", "使用執照領照日期"),
         C("CHG_EXP", "變更使用範圍"), C("CHG_PRIN", "變更使用檢討原則"), F("CHG_PRIN_DESC", "檢討原則顯示文字", { wide: true }),
         Y("DOC1", "檢附檢討項目簽證表"), Y("DOC2", "檢附室內裝修圖說"), Y("DOC3", "檢附結構計算書"), Y("DOC4", "檢附設備圖說"),
-        C("LAW_02", "變更使用法規版本"), F("LAW_02_DOC", "法規依據／公文", { wide: true }), M("OTHERS_MEMO", "其他變更使用說明", { full: true }),
+        M("OTHERS_MEMO", "其他變更使用說明", { full: true }),
       ], { formSets: ["C"], note: "C21、C22 系列使用；代碼欄選取後會保留舊系統原始代碼。" }),
       S("農舍管制", [
         D("IDENTIFY_LICE_OLD_DATE", "原執照核發日期"), C("LAND_GET_TIME", "農地取得時點"), C("FARM_BUILD", "農舍興建方式"), M("FARM_MEMO", "農舍管制備註", { full: true }),
@@ -94,7 +99,7 @@ const TABLE_CONFIG = {
       S("書表長文字", [
         M("A12_TITTLE", "土地使用權同意書前言", { full: true }),
         M("A12_5TITLE", "共同壁協定書標題／前言", { full: true }),
-      ]),
+      ], { templateAction: true, note: "SQLite 範本模式可將這兩個長文字欄位儲存成共用範本；套用時預設只填空白欄位。" }),
       S("變更前／原核准值", [
         C("BUILDING_KIND1_OLD", "原構造種類代碼 1"), C("BUILDING_KIND2_OLD", "原構造種類代碼 2"), C("BUILDING_KIND3_OLD", "原構造種類代碼 3"),
         N("BUILDING_HEIGHT_OLD", "原建築高度分類值"), N("PRICE_OLD", "原工程造價（元）"), N("OTHERS_PRICE_OLD", "原雜項工作物造價（元）"),
@@ -134,8 +139,12 @@ const TABLE_CONFIG = {
   BMSMEMO: {
     label: "案件備註",
     forms: ["A11-1", "A21-1", "A31-1", "B11-2", "B13-1", "B13-3", "B13-5", "B21-1", "C11-1", "C21-1", "C21-2", "C22-3", "D11-1"],
-    notice: "備註代碼、代碼名稱與實際全文要一起填。沒有對應代碼的自由備註可讓 MEMO_SEQ／NAME 留白，只填 DESE。",
-    sections: [S("備註內容", [C("MEMO_SEQ", "備註代碼"), F("MEMO_SEQ_NAME", "備註代碼名稱"), M("DESE", "備註全文", { full: true })])],
+    notice: "舊系統規定備註請使用上方快速帶入；程序、屬性代碼／名稱與備註內容會一起寫入。自由備註可讓代碼與名稱留白，只填內容。",
+    sections: [S("目前備註內容", [
+      F("MEMO_SEQ", "程序、屬性代碼", { maxLength: 4, hint: "舊系統 RMK 範本代碼最長 4 碼；自由備註可以留白。" }),
+      F("MEMO_SEQ_NAME", "程序、屬性名稱", { maxLength: 100 }),
+      M("DESE", "備註內容", { full: true, maxLength: 230 }),
+    ])],
   },
   BMSP01: {
     label: "起造人／棟戶門牌",
@@ -264,7 +273,7 @@ const TABLE_CONFIG = {
         F("CONSNAME_OLD", "原工作物名稱", { wide: true }), F("BUILDING_KIND_OLD", "原工作物構造"),
         N("LENGTH_OLD", "原長度（m）"), N("HEIGHT_OLD", "原高度（m）"), N("WIDE_OLD", "原寬度／厚度（m）"), N("AREA_OLD", "原面積（㎡）"),
         M("DESE_OLD", "原工作物說明", { full: true }),
-      ], { old: true, note: "A31-5 使用；非變更案可留白。" }),
+      ], { old: true, note: "A31-5 使用；非變更案可留白。按鈕會以本次工作物逐欄覆蓋原值，空白也會照樣帶入。", copyCurrent: "BMSWORK", copyLabel: "一鍵帶入本次工作物" }),
     ],
   },
   BM_TEC: {
@@ -420,6 +429,25 @@ const FORM_SETS = {
   },
 };
 
+const RECOMMENDED_FORM_PREFIXES_BY_APPLY_TYPE = {
+  "E11-1": [],
+  "A11-1": ["A11", "A12", "A13"],
+  "A11-2": ["A11", "A12", "A13"],
+  "A21-1": ["A21", "A23"],
+  "A31-1": ["A31", "A32"],
+  "A31-2": ["A31", "A32"],
+  "B11-1": ["B11-1"],
+  "B11-2": ["B11-2"],
+  "B13-1": ["B13-1"],
+  "B13-3": ["B13-3"],
+  "B13-5": ["B13-5"],
+  "B14-1": ["B14-1"],
+  "B21-1": ["B21-1"],
+  "C11-1": ["C11", "C12"],
+  "C21-1": ["C21", "C22"],
+  "D11-1": ["D11", "D13"],
+};
+
 const CODE_OPTIONS = {
   "BMSBASE.BMPAS": [["I80", "臺中市"]],
   "BMSBASE.GOV": [["I80", "臺中市政府"]],
@@ -481,7 +509,7 @@ const genericDistrictOptions = [["436", "臺中市清水區"], ["420", "臺中�
 const FIELD_CODEBOOK = {
   BMSBASE: {
     BMPAS: { type: "PAS" }, GOV: { type: "BUDWD" }, BUILDING_CATEGORY: { type: "BIN" }, APPLY_TYPE: { type: "APP" },
-    LAW_01: { type: "BMLAW1" }, LAW_02: { type: "BMLAW2" }, LAW_03: { type: "BMLAW2" },
+    LAW_01: { type: "BMLAW1" }, LAW_03: { type: "BMLAW2" },
     USE_CATEGORY_CODE1: { type: "KIN", city: true }, USE_CATEGORY_CODE2: { type: "KIN", city: true }, USE_CATEGORY_CODE3: { type: "KIN", city: true },
     USAGE_CODE: { type: "BLU" }, BUILDING_KIND1: { type: "STU", city: true }, BUILDING_KIND2: { type: "STU", city: true }, BUILDING_KIND3: { type: "STU", city: true },
     BUILDING_KIND1_OLD: { type: "STU", city: true }, BUILDING_KIND2_OLD: { type: "STU", city: true }, BUILDING_KIND3_OLD: { type: "STU", city: true },
@@ -496,7 +524,6 @@ const FIELD_CODEBOOK = {
   BMSLANOWNER: {
     DIST: { type: "ZON", city: true }, SECTION: { type: "SEC", city: true, districtField: "DIST", value: "sub" },
   },
-  BMSMEMO: { MEMO_SEQ: { type: "RMK", value: "subCode" } },
   BMSP01: {
     BLD_CODE1: { type: "USECOD" }, BLD_CODE2: { type: "USECOD" }, BLD_CODE3: { type: "USECOD" },
   },
@@ -559,6 +586,17 @@ const COPY_CURRENT_TO_OLD = {
     ["STORY_AREA", "STORY_AREA_OLD"], ["STORY_HEIGHT", "STORY_HEIGHT_OLD"],
     ["VERANDA_AREA", "VERANDA_AREA_OLD"], ["TERRACE_AREA", "TERRACE_AREA_OLD"],
   ],
+  BMSWORK: [
+    ["CONSNAME", "CONSNAME_OLD"], ["BUILDING_KIND", "BUILDING_KIND_OLD"],
+    ["LENGTH", "LENGTH_OLD"], ["HEIGHT", "HEIGHT_OLD"], ["WIDE", "WIDE_OLD"], ["AREA", "AREA_OLD"],
+    ["DESE", "DESE_OLD"],
+  ],
+};
+
+const BULK_COMPARISON_CONFIG = {
+  BMSLAN: { currentLabel: "本次地號", oldLabel: "變更前地號" },
+  BMSSTAIR: { currentLabel: "本次樓層概要", oldLabel: "變更前／原核准樓層概要" },
+  BMSWORK: { currentLabel: "本次雜項工作物", oldLabel: "變更前／原核准雜項工作物" },
 };
 
 const state = {
@@ -571,14 +609,21 @@ const state = {
   activeTable: "BMSBASE",
   activeRecord: 0,
   sourceName: "空白案件",
+  sourceZipFile: null,
+  sourceZipDataTxtPath: "",
   sourceRows: [],
   sourceHeaders: [],
   mappings: {},
-  picker: { target: null, options: [], title: "", key: "", filteredIndexes: [], cursor: 0 },
+  picker: { target: null, onChoose: null, currentValue: "", options: [], title: "", key: "", filteredIndexes: [], cursor: 0 },
+  memoPreset: { categoryCode: "", procedureId: "", templateCode: "" },
   sectionOpen: {},
   showRawFields: false,
   bulkDirty: false,
+  bulkComparisonSide: "current",
   pendingClearTable: "",
+  templates: [],
+  activeTemplateKind: "",
+  selectedTemplateId: "",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -732,7 +777,10 @@ function optionsFor(table, field, record = currentRecord()) {
     || ((/^(?:O_ADDR|H_ADDR|ADDR)ADR(?:_OLD)?$/.test(field) || field === "COM_ZIP") ? genericDistrictOptions : []);
   const spec = codeSpecFor(table, field);
   if (!spec || !state.codebook) return sortOptionsByName(fallback);
-  let rows = state.codebook.codeTypes?.[spec.type] || [];
+  const currentLegacyRows = state.codebook.legacyPresets?.laws?.[spec.type];
+  let rows = Array.isArray(currentLegacyRows) && currentLegacyRows.length
+    ? currentLegacyRows.filter((row) => row.code !== "**")
+    : (state.codebook.codeTypes?.[spec.type] || []);
   if (spec.type === "SEC") rows = [...(state.codebook.officialSections || []), ...rows];
   const city = activeTables().BMSBASE?.[0]?.BMPAS || "";
   if (spec.city && city) {
@@ -775,6 +823,26 @@ function currentRecord() {
   return currentRows()[state.activeRecord] || null;
 }
 
+function currentApplyType() {
+  return activeTables().BMSBASE?.[0]?.APPLY_TYPE || "";
+}
+
+function currentApplyTypeLabel() {
+  const applyType = currentApplyType();
+  return state.codebook?.codeTypes?.APP?.find((row) => row.code === applyType)?.label || applyType;
+}
+
+function recommendedTablesForApplyType(applyType = currentApplyType()) {
+  const recommended = new Set(["BMSBASE"]);
+  const prefixes = RECOMMENDED_FORM_PREFIXES_BY_APPLY_TYPE[applyType] || [];
+  for (const [table, config] of Object.entries(TABLE_CONFIG)) {
+    if (config.forms.some((form) => prefixes.some((prefix) => form === prefix || form.startsWith(`${prefix}-`)))) {
+      recommended.add(table);
+    }
+  }
+  return recommended;
+}
+
 function recordCaption(table, record, index) {
   const candidates = {
     BM_TEC: "TEC_NAME", BMSLAN: "ROAD_NO1", BMSLANOWNER: "owner", BMSMEMO: "MEMO_SEQ_NAME",
@@ -815,11 +883,14 @@ function renderFormSetSwitcher() {
 }
 
 function renderNav() {
+  const recommended = recommendedTablesForApplyType();
   $("#tableNav").innerHTML = FORM_SETS[state.formSet].tables.map((table) => {
     const config = TABLE_CONFIG[table];
     const count = (activeTables()[table] || []).length;
-    return `<button class="nav-item ${table === state.activeTable ? "active" : ""}" type="button" data-table="${table}">
-      <span>${escapeHtml(config.label)}<small class="nav-raw">${table}</small></span>
+    const isRecommended = recommended.has(table);
+    const ariaLabel = `${config.label}${isRecommended ? "，依目前申請類型建議優先填寫" : ""}，${count} 筆`;
+    return `<button class="nav-item ${table === state.activeTable ? "active" : ""} ${isRecommended ? "recommended" : ""}" type="button" data-table="${table}" aria-label="${escapeHtml(ariaLabel)}">
+      <span>${isRecommended ? '<span class="nav-recommended-mark" aria-hidden="true">*</span>' : ""}${escapeHtml(config.label)}<small class="nav-raw">${table}</small></span>
       <span class="nav-count">${count}</span>
     </button>`;
   }).join("");
@@ -857,6 +928,161 @@ function renderRecordControls() {
   $("#clearCurrentTableButton").disabled = !rows.length;
 }
 
+function regulatedNoteCategories() {
+  const categories = state.codebook?.legacyPresets?.regulatedNotes?.categories;
+  return Array.isArray(categories) ? categories : [];
+}
+
+function memoPresetContext() {
+  const categories = regulatedNoteCategories();
+  const category = categories.find((item) => item.code === state.memoPreset.categoryCode) || null;
+  if (!category && state.memoPreset.categoryCode) {
+    state.memoPreset = { categoryCode: "", procedureId: "", templateCode: "" };
+  }
+  const procedure = category?.procedures?.find((item) => item.id === state.memoPreset.procedureId) || null;
+  if (!procedure && state.memoPreset.procedureId) {
+    state.memoPreset.procedureId = "";
+    state.memoPreset.templateCode = "";
+  }
+  const template = procedure?.templates?.find((item) => item.code === state.memoPreset.templateCode) || null;
+  if (!template && state.memoPreset.templateCode) state.memoPreset.templateCode = "";
+  return { categories, category, procedure, template };
+}
+
+function memoTemplateExcerpt(body, maximum = 68) {
+  const compact = String(body || "").replace(/\s+/g, " ").trim();
+  return compact.length > maximum ? `${compact.slice(0, maximum)}…` : compact;
+}
+
+function memoPresetOptions(kind, context = memoPresetContext()) {
+  if (kind === "category") return context.categories.map((item) => [item.code, item.label]);
+  if (kind === "procedure") return (context.category?.procedures || []).map((item) => [item.id, item.label]);
+  return (context.procedure?.templates || []).map((item) => [item.code, `${item.code}｜${memoTemplateExcerpt(item.body)}`]);
+}
+
+function memoChoiceMarkup(kind, label, options, value, emptyText) {
+  const id = `memo-preset-${kind}`;
+  if (!options.length) {
+    return `<label class="memo-step" for="${id}"><span>${escapeHtml(label)}</span><select id="${id}" disabled><option>${escapeHtml(emptyText)}</option></select></label>`;
+  }
+  if (!useModalForOptions(options)) {
+    return `<label class="memo-step" for="${id}"><span>${escapeHtml(label)}</span><select id="${id}" data-memo-choice="${kind}">${renderInlineOptionMarkup(options, value)}</select></label>`;
+  }
+  const selectedLabel = options.find(([optionValue]) => optionValue === value)?.[1] || "";
+  return `<div class="memo-step"><span>${escapeHtml(label)}</span><button class="memo-choice-button" id="${id}" type="button" data-open-memo-picker="${kind}" aria-label="選擇${escapeHtml(label)}">
+    <span>${escapeHtml(selectedLabel || emptyText)}</span><code>${escapeHtml(value)}</code><span aria-hidden="true">⌄</span>
+  </button></div>`;
+}
+
+function setMemoPresetChoice(kind, value) {
+  if (kind === "category") {
+    state.memoPreset = { categoryCode: value, procedureId: "", templateCode: "" };
+  } else if (kind === "procedure") {
+    state.memoPreset.procedureId = value;
+    const context = memoPresetContext();
+    state.memoPreset.templateCode = context.procedure?.templates?.length === 1 ? context.procedure.templates[0].code : "";
+  } else {
+    state.memoPreset.templateCode = value;
+  }
+  renderTableAssistant();
+}
+
+function openMemoPresetPicker(kind) {
+  const context = memoPresetContext();
+  const options = memoPresetOptions(kind, context);
+  const titles = { category: "選擇規定備註分類", procedure: "選擇程序、屬性", template: "選擇預設備註內容" };
+  const currentValues = {
+    category: state.memoPreset.categoryCode,
+    procedure: state.memoPreset.procedureId,
+    template: state.memoPreset.templateCode,
+  };
+  openOptionPicker(null, titles[kind], options, `BMSMEMO.preset.${kind}`, (value) => setMemoPresetChoice(kind, value), currentValues[kind]);
+}
+
+function memoRecordIsBlank(record) {
+  return ["MEMO_SEQ", "MEMO_SEQ_NAME", "DESE"].every((field) => !(record?.[field] || ""));
+}
+
+function memoTargetRecord() {
+  const rows = activeTables().BMSMEMO || (activeTables().BMSMEMO = []);
+  let targetIndex = rows.findIndex(memoRecordIsBlank);
+  if (targetIndex < 0) {
+    rows.push(blankRecord("BMSMEMO"));
+    targetIndex = rows.length - 1;
+  }
+  return { rows, targetIndex, record: rows[targetIndex] };
+}
+
+function addRegulatedMemoPreset() {
+  const { procedure, template } = memoPresetContext();
+  if (!procedure || !template) {
+    toast("請先選擇分類、程序／屬性與備註內容。", "error");
+    return;
+  }
+  const { targetIndex, record } = memoTargetRecord();
+  record.MEMO_SEQ = template.code;
+  record.MEMO_SEQ_NAME = procedure.label;
+  record.DESE = template.body;
+  normalizeRowMetadata("BMSMEMO");
+  state.activeRecord = targetIndex;
+  renderAll();
+  setStatus(`已新增「${procedure.label}」規定備註，尚未匯出`, "warn");
+  toast("已帶入代碼、程序／屬性名稱與備註內容，仍可在下方修改。 ");
+  window.requestAnimationFrame(() => document.querySelector('[data-field="DESE"]')?.focus());
+}
+
+function addManualMemoRecord() {
+  const { targetIndex } = memoTargetRecord();
+  normalizeRowMetadata("BMSMEMO");
+  state.activeRecord = targetIndex;
+  renderAll();
+  setStatus("已準備一筆自由備註，尚未匯出", "warn");
+  window.requestAnimationFrame(() => document.querySelector('[data-field="DESE"]')?.focus());
+}
+
+function renderTableAssistant() {
+  const container = $("#tableAssistant");
+  if (!container) return;
+  if (state.activeTable !== "BMSMEMO") {
+    container.hidden = true;
+    container.innerHTML = "";
+    return;
+  }
+  const context = memoPresetContext();
+  const categoryOptions = memoPresetOptions("category", context);
+  const procedureOptions = memoPresetOptions("procedure", context);
+  const templateOptions = memoPresetOptions("template", context);
+  const hasLegacyPresets = categoryOptions.length > 0;
+  const canManageTemplates = templateStorageEnabled() && Boolean(templateCatalogForTable("BMSMEMO"));
+  container.hidden = false;
+  container.innerHTML = `<div class="memo-assistant-card">
+    <div class="memo-assistant-head">
+      <div><p class="eyebrow">舊二維系統內建資料</p><h3>快速新增規定備註</h3></div>
+      <span class="memo-source-badge">臺中市 I80</span>
+    </div>
+    <p class="memo-assistant-intro">依分類縮小範圍，再選程序、屬性與預設備註內容；新增後仍可逐字修改。</p>
+    ${hasLegacyPresets ? `<div class="memo-step-grid">
+      ${memoChoiceMarkup("category", "1. 分類項目", categoryOptions, state.memoPreset.categoryCode, "請選擇分類")}
+      ${memoChoiceMarkup("procedure", "2. 程序、屬性", procedureOptions, state.memoPreset.procedureId, context.category ? "請選擇程序、屬性" : "請先選分類")}
+      ${memoChoiceMarkup("template", "3. 備註內容範本", templateOptions, state.memoPreset.templateCode, context.procedure ? "請選擇內容範本" : "請先選程序、屬性")}
+    </div>` : `<div class="memo-preset-empty">目前 codebook 沒有舊系統規定備註資料；仍可新增自由備註。</div>`}
+    <div class="memo-preview" aria-live="polite">
+      ${context.template ? `<div><strong>${escapeHtml(context.procedure.label)}</strong><code>${escapeHtml(context.template.code)}</code></div><p>${escapeHtml(context.template.body)}</p>` : `<p>選好備註內容後，這裡會先顯示完整文字供確認。</p>`}
+    </div>
+    <div class="memo-assistant-actions">
+      <button class="button secondary" type="button" data-add-manual-memo>新增自由備註</button>
+      ${canManageTemplates ? `<button class="button secondary" type="button" data-open-memo-templates>自訂備註範本</button>` : ""}
+      <span></span>
+      <button class="button primary" type="button" data-add-regulated-memo ${context.template ? "" : "disabled"}>新增這則備註</button>
+    </div>
+  </div>`;
+  $$('[data-memo-choice]').forEach((select) => select.addEventListener("change", () => setMemoPresetChoice(select.dataset.memoChoice, select.value)));
+  $$('[data-open-memo-picker]').forEach((button) => button.addEventListener("click", () => openMemoPresetPicker(button.dataset.openMemoPicker)));
+  container.querySelector('[data-add-regulated-memo]')?.addEventListener("click", addRegulatedMemoPreset);
+  container.querySelector('[data-add-manual-memo]')?.addEventListener("click", addManualMemoRecord);
+  container.querySelector('[data-open-memo-templates]')?.addEventListener("click", openTemplateDialog);
+}
+
 function pickerOptionsForField(table, field, record) {
   if (field.kind === "yn") return sortOptionsByName([["Y", "是"], ["N", "否"]]);
   return optionsFor(table, field.name, record);
@@ -880,7 +1106,7 @@ function renderInlineOptionMarkup(options, value) {
 function renderOptionPicker(resetCursor = true) {
   const keyword = $("#optionPickerSearch").value.trim().toLocaleLowerCase("zh-Hant");
   const tokens = keyword.split(/\s+/).filter(Boolean);
-  const currentValue = state.picker.target?.value ?? "";
+  const currentValue = state.picker.target?.value ?? state.picker.currentValue ?? "";
   const filtered = state.picker.options
     .map((option, index) => ({ option, index }))
     .filter(({ option: [value, label] }) => {
@@ -913,8 +1139,8 @@ function renderOptionPicker(resetCursor = true) {
     : `<div class="picker-empty">找不到符合的選項</div>`;
 }
 
-function openOptionPicker(target, title, options, key = "") {
-  state.picker = { target, title, options: sortOptionsByName(options), key, filteredIndexes: [], cursor: 0 };
+function openOptionPicker(target, title, options, key = "", onChoose = null, currentValue = "") {
+  state.picker = { target, onChoose, currentValue, title, options: sortOptionsByName(options), key, filteredIndexes: [], cursor: 0 };
   $("#optionPickerTitle").textContent = title;
   $("#optionPickerSearch").value = "";
   renderOptionPicker();
@@ -927,8 +1153,13 @@ function openOptionPicker(target, title, options, key = "") {
 
 function choosePickerValue(value, label = "") {
   const target = state.picker.target;
+  const onChoose = state.picker.onChoose;
   rememberPickerValue(state.picker.key, value);
   $("#optionPickerDialog").close();
+  if (typeof onChoose === "function") {
+    onChoose(value, label);
+    return;
+  }
   if (!target?.isConnected) return;
   target.value = value;
   updatePickerDisplay(target, value, label);
@@ -976,6 +1207,7 @@ function renderField(field, record, table) {
   const options = optionField ? pickerOptionsForField(table, field, record) : [];
   const pickerField = optionField && useModalForOptions(options);
   const labelFor = pickerField ? `${fieldId}-picker` : fieldId;
+  const maxLength = field.maxLength ? ` maxlength="${field.maxLength}"` : "";
   let control;
   if (field.kind === "file") {
     const fileName = record.FILE_NAME || (value ? "已保存的附件" : "尚未選擇檔案");
@@ -989,7 +1221,7 @@ function renderField(field, record, table) {
       <small class="attachment-summary">${escapeHtml(`${fileName}${sizeLabel}`)}</small>
     </div>`;
   } else if (field.multiline) {
-    control = `<textarea id="${fieldId}" data-field="${field.name}" placeholder="${escapeHtml(field.placeholder || "")}">${escapeHtml(value)}</textarea>`;
+    control = `<textarea id="${fieldId}" data-field="${field.name}"${maxLength} placeholder="${escapeHtml(field.placeholder || "")}">${escapeHtml(value)}</textarea>`;
   } else if (optionField && !pickerField) {
     control = `<select class="compact-option-select" id="${fieldId}" data-field="${field.name}" aria-label="${escapeHtml(field.label)}">
       ${renderInlineOptionMarkup(options, value)}
@@ -1006,7 +1238,7 @@ function renderField(field, record, table) {
       <input class="picker-code-input" id="${fieldId}" data-field="${field.name}" value="${escapeHtml(value)}" autocomplete="off" aria-label="${escapeHtml(field.label)}原始代碼">
     </div>`;
   } else {
-    control = `<input id="${fieldId}" data-field="${field.name}" value="${escapeHtml(value)}"
+    control = `<input id="${fieldId}" data-field="${field.name}" value="${escapeHtml(value)}"${maxLength}
       ${field.kind === "number" ? 'inputmode="decimal"' : ""} placeholder="${escapeHtml(field.placeholder || "")}">`;
   }
   return `<div class="${classes}" data-search="${escapeHtml(`${field.label} ${field.name}`.toLowerCase())}">
@@ -1024,6 +1256,21 @@ function sectionStartsOpen(table, section, index) {
   return Object.hasOwn(state.sectionOpen, key) ? state.sectionOpen[key] : !section.old;
 }
 
+function recommendedNoticeLine() {
+  const applyType = currentApplyType();
+  if (!applyType) return "* 請先在「案件主檔」設定申請類型；設定後，左側會標示建議優先填寫的資料群組。";
+  const label = currentApplyTypeLabel();
+  return `* 表示依申請類型「${applyType}${label && label !== applyType ? ` ${label}` : ""}」及已確認的書表資料關聯，建議優先填寫；未標示的群組仍可照案件需要使用。`;
+}
+
+function renderTableNotice() {
+  const config = TABLE_CONFIG[state.activeTable];
+  const text = [config.notice || "", recommendedNoticeLine()].filter(Boolean).join("\n");
+  $("#tableNotice").hidden = !text;
+  $("#tableNotice").open = false;
+  $("#tableNoticeText").textContent = text;
+}
+
 function renderEditor() {
   const config = TABLE_CONFIG[state.activeTable];
   const sections = visibleSections(state.activeTable);
@@ -1031,9 +1278,8 @@ function renderEditor() {
   $("#tableRawName").textContent = state.activeTable;
   $("#tableTitle").textContent = config.label;
   $("#formChips").innerHTML = `<span class="form-usage" title="${escapeHtml(config.forms.join("、"))}">使用於 ${config.forms.length} 份書表</span>`;
-  $("#tableNotice").hidden = !config.notice;
-  $("#tableNotice").open = false;
-  $("#tableNoticeText").textContent = config.notice || "";
+  renderTableNotice();
+  renderTableAssistant();
   $("#emptyState").hidden = Boolean(record);
   $("#editorForm").hidden = !record;
   if (!record) {
@@ -1045,7 +1291,10 @@ function renderEditor() {
   $("#fieldGroups").innerHTML = sections.map(({ section, index }) => `<details class="field-section ${section.old ? "old-section" : ""}" data-section-index="${index}" ${sectionStartsOpen(state.activeTable, section, index) ? "open" : ""}>
     <summary class="section-heading"><h3>${escapeHtml(section.title)}</h3></summary>
     <div class="section-body">
-      ${section.copyCurrent ? `<div class="section-actions"><button class="button secondary compact section-copy-button" type="button" data-copy-current="${section.copyCurrent}">${escapeHtml(section.copyLabel)}</button></div>` : ""}
+      ${section.copyCurrent || (section.templateAction && templateStorageEnabled() && templateCatalogForTable(state.activeTable)) ? `<div class="section-actions">
+        ${section.copyCurrent ? `<button class="button secondary compact section-copy-button" type="button" data-copy-current="${section.copyCurrent}">${escapeHtml(section.copyLabel)}</button>` : ""}
+        ${section.templateAction && templateStorageEnabled() && templateCatalogForTable(state.activeTable) ? `<button class="button secondary compact" type="button" data-open-section-template>管理書表長文字範本</button>` : ""}
+      </div>` : ""}
       ${section.note ? `<details class="section-help"><summary>填寫說明</summary><p>${escapeHtml(section.note)}</p></details>` : ""}
       <div class="field-grid">${section.fields.map((field) => renderField(field, record, state.activeTable)).join("")}</div>
     </div>
@@ -1062,6 +1311,7 @@ function renderEditor() {
     openOptionPicker(target, field.label, pickerOptionsForField(state.activeTable, field, record), `${state.activeTable}.${field.name}`);
   }));
   $$("[data-copy-current]").forEach((button) => button.addEventListener("click", () => copyCurrentValuesToOld(button.dataset.copyCurrent)));
+  $$("[data-open-section-template]").forEach((button) => button.addEventListener("click", openTemplateDialog));
   $$("[data-select-attachment]").forEach((button) => button.addEventListener("click", () => {
     button.closest(".field").querySelector("[data-attachment-input]").click();
   }));
@@ -1144,6 +1394,8 @@ function clearCurrentAttachment() {
 }
 
 function renderAll() {
+  syncZipExportAvailability();
+  syncTemplateButton();
   renderFormSetSwitcher();
   renderNav();
   const editable = FORM_SETS[state.formSet].tables.length > 0;
@@ -1191,6 +1443,10 @@ function handleFieldInput(event) {
     }
   });
   setStatus("資料已修改，尚未匯出", "warn");
+  if (state.activeTable === "BMSBASE" && field === "APPLY_TYPE") {
+    renderNav();
+    renderTableNotice();
+  }
   if (event.type === "change" && ["BMPAS", "DIST", "DIST_OLD"].includes(field)) renderEditor();
 }
 
@@ -1304,6 +1560,87 @@ function fieldDefinition(table, fieldName) {
   return allFields(table).find((field) => field.name === fieldName) || F(fieldName, fieldName);
 }
 
+function bulkComparisonConfig(table = state.activeTable) {
+  return BULK_COMPARISON_CONFIG[table] || null;
+}
+
+function bulkComparisonPairs(table = state.activeTable) {
+  return bulkComparisonConfig(table) ? (COPY_CURRENT_TO_OLD[table] || []) : [];
+}
+
+function bulkFieldNamesForTable(table = state.activeTable) {
+  const baseFields = BULK_FIELDS[table] || [];
+  const pairs = bulkComparisonPairs(table);
+  if (!pairs.length) return baseFields;
+  const pairedNames = new Set(pairs.flat());
+  const commonFields = baseFields.filter((name) => !pairedNames.has(name));
+  const sideIndex = state.bulkComparisonSide === "old" ? 1 : 0;
+  return [...commonFields, ...pairs.map((pair) => pair[sideIndex])];
+}
+
+function bulkValuesDiffer(record, sourceField, oldField) {
+  return String(record[sourceField] ?? "") !== String(record[oldField] ?? "");
+}
+
+function bulkFieldDiffers(table, record, fieldName) {
+  const pair = bulkComparisonPairs(table).find(([sourceField, oldField]) => sourceField === fieldName || oldField === fieldName);
+  return pair ? bulkValuesDiffer(record, pair[0], pair[1]) : false;
+}
+
+function bulkRowHasDifferences(table, record) {
+  return bulkComparisonPairs(table).some(([sourceField, oldField]) => bulkValuesDiffer(record, sourceField, oldField));
+}
+
+function refreshBulkDifferenceIndicators(rowIndex) {
+  const table = state.activeTable;
+  if (!bulkComparisonConfig(table)) return;
+  const record = activeTables()[table]?.[rowIndex];
+  const row = document.querySelector(`[data-bulk-row-index="${rowIndex}"]`);
+  if (!record || !row) return;
+  const rowDiffers = bulkRowHasDifferences(table, record);
+  const selectWrap = row.querySelector(".bulk-select-wrap");
+  selectWrap?.classList.toggle("has-difference", rowDiffers);
+  const checkbox = row.querySelector("[data-bulk-select]");
+  if (checkbox) checkbox.setAttribute("aria-label", `選取第 ${rowIndex + 1} 列${rowDiffers ? "，本次與變更前資料有差異" : ""}`);
+  row.querySelectorAll("[data-bulk-cell]").forEach((cell) => {
+    const differs = bulkFieldDiffers(table, record, cell.dataset.bulkCell);
+    cell.classList.toggle("bulk-cell-different", differs);
+    cell.title = differs ? "此欄位的本次與變更前資料不同" : "";
+  });
+}
+
+function renderBulkComparisonControls(table) {
+  const config = bulkComparisonConfig(table);
+  const bar = $("#bulkComparisonBar");
+  bar.hidden = !config;
+  if (!config) return;
+  const showingOld = state.bulkComparisonSide === "old";
+  $("#bulkComparisonViewLabel").textContent = showingOld ? config.oldLabel : config.currentLabel;
+  $("#bulkComparisonToggleButton").textContent = showingOld ? `切換至${config.currentLabel}` : `切換至${config.oldLabel}`;
+  $("#bulkCopyAllToOldButton").textContent = `全部帶入${config.oldLabel}`;
+  $("#bulkCopyAllToOldButton").disabled = !(activeTables()[table] || []).length;
+}
+
+function toggleBulkComparisonSide() {
+  if (!bulkComparisonConfig()) return;
+  const selected = selectedBulkIndexes();
+  state.bulkComparisonSide = state.bulkComparisonSide === "old" ? "current" : "old";
+  renderBulkTable(selected);
+}
+
+function copyAllBulkCurrentValuesToOld() {
+  const table = state.activeTable;
+  const rows = activeTables()[table] || [];
+  const pairs = bulkComparisonPairs(table);
+  if (!rows.length || !pairs.length) return;
+  const selected = selectedBulkIndexes();
+  for (const record of rows) copyMappedValues(record, pairs);
+  state.bulkDirty = true;
+  renderBulkTable(selected);
+  setStatus(`已將 ${rows.length} 筆本次資料全部帶入變更前／原核准欄位，尚未匯出`, "warn");
+  toast(`已同步 ${rows.length} 筆、每筆 ${pairs.length} 個欄位；本次空白值也已覆蓋原值。`);
+}
+
 function normalizeRowMetadata(table) {
   const rows = activeTables()[table] || [];
   rows.forEach((record, index) => {
@@ -1357,19 +1694,29 @@ function bulkColumnClass(field) {
   return "bulk-col-text";
 }
 
-function renderBulkTable() {
+function renderBulkTable(selectedIndexes = []) {
   const table = state.activeTable;
-  const fieldNames = BULK_FIELDS[table] || [];
+  const fieldNames = bulkFieldNamesForTable(table);
   const fields = fieldNames.map((name) => fieldDefinition(table, name));
   const rows = activeTables()[table] || [];
-  $("#bulkDialogTitle").textContent = `${TABLE_CONFIG[table].label} — 批次表格`;
+  const selected = new Set(selectedIndexes);
+  const comparison = bulkComparisonConfig(table);
+  const viewLabel = comparison ? (state.bulkComparisonSide === "old" ? comparison.oldLabel : comparison.currentLabel) : "";
+  $("#bulkDialogTitle").textContent = `${TABLE_CONFIG[table].label} — ${viewLabel ? `${viewLabel} ` : ""}批次表格`;
+  renderBulkComparisonControls(table);
   $("#bulkTableArea").innerHTML = `<table class="bulk-table">
     <thead><tr><th>選取</th><th>#</th>${fields.map((field) => `<th class="${bulkColumnClass(field)}" title="${field.name}">${escapeHtml(field.label)}<small class="nav-raw">${field.name}</small></th>`).join("")}</tr></thead>
-    <tbody>${rows.map((record, rowIndex) => `<tr>
-      <td><input type="checkbox" data-bulk-select="${rowIndex}" aria-label="選取第 ${rowIndex + 1} 列"></td>
+    <tbody>${rows.map((record, rowIndex) => {
+      const rowDiffers = bulkRowHasDifferences(table, record);
+      return `<tr data-bulk-row-index="${rowIndex}">
+      <td><span class="bulk-select-wrap ${rowDiffers ? "has-difference" : ""}"><input type="checkbox" data-bulk-select="${rowIndex}" ${selected.has(rowIndex) ? "checked" : ""} aria-label="選取第 ${rowIndex + 1} 列${rowDiffers ? "，本次與變更前資料有差異" : ""}"></span></td>
       <td>${rowIndex + 1}</td>
-      ${fields.map((field, columnIndex) => `<td class="${bulkColumnClass(field)}">${renderBulkControl(table, field, record, rowIndex, columnIndex)}</td>`).join("")}
-    </tr>`).join("")}</tbody>
+      ${fields.map((field, columnIndex) => {
+        const differs = bulkFieldDiffers(table, record, field.name);
+        return `<td class="${bulkColumnClass(field)} ${differs ? "bulk-cell-different" : ""}" data-bulk-cell="${field.name}" ${differs ? 'title="此欄位的本次與變更前資料不同"' : ""}>${renderBulkControl(table, field, record, rowIndex, columnIndex)}</td>`;
+      }).join("")}
+    </tr>`;
+    }).join("")}</tbody>
   </table>`;
 
   $$('[data-bulk-field]').forEach((control) => {
@@ -1379,10 +1726,12 @@ function renderBulkTable() {
       hydrateDerived(table, row, control.dataset.bulkField);
       state.bulkDirty = true;
       setStatus("批次表格已修改，尚未匯出", "warn");
+      refreshBulkDifferenceIndicators(Number(control.dataset.bulkRow));
       if (event.type === "change" && (codeSpecFor(table, control.dataset.bulkField) || ["DIST", "DIST_OLD"].includes(control.dataset.bulkField))) {
         const area = $("#bulkTableArea");
         const top = area.scrollTop, left = area.scrollLeft;
-        renderBulkTable();
+        const selected = selectedBulkIndexes();
+        renderBulkTable(selected);
         $("#bulkTableArea").scrollTop = top;
         $("#bulkTableArea").scrollLeft = left;
       }
@@ -1426,7 +1775,7 @@ function handleBulkPaste(event) {
   if (!text.includes("\t") && !text.includes("\n") && !text.includes(",")) return;
   event.preventDefault();
   const table = state.activeTable;
-  const fieldNames = BULK_FIELDS[table];
+  const fieldNames = bulkFieldNamesForTable(table);
   const fields = fieldNames.map((name) => fieldDefinition(table, name));
   const matrix = parseClipboardMatrix(text);
   if (!matrix.length) return;
@@ -1503,6 +1852,7 @@ function deleteBulkRows() {
 function openBulkEditor() {
   if (!BULK_FIELDS[state.activeTable]) return;
   state.bulkDirty = false;
+  state.bulkComparisonSide = "current";
   if (!currentRows().length) addBulkRows(1);
   renderBulkTable();
   $("#bulkDialog").showModal();
@@ -1600,11 +1950,258 @@ function caseEnvelope() {
   };
 }
 
+function sourceIsZip(file) {
+  return Boolean(file) && (file.name.toLowerCase().endsWith(".zip") || /zip/i.test(file.type));
+}
+
+function clearSourceZip() {
+  state.sourceZipFile = null;
+  state.sourceZipDataTxtPath = "";
+  syncZipExportAvailability();
+}
+
+function syncZipExportAvailability() {
+  const button = $("#exportZipButton");
+  if (!button) return;
+  button.disabled = !state.sourceZipFile;
+  button.title = state.sourceZipFile
+    ? `使用 ${state.sourceZipFile.name}，僅替換 ${state.sourceZipDataTxtPath || "data.txt"}`
+    : "請先載入含有 data.txt 的 ZIP";
+}
+
 async function apiJson(path, options = {}) {
   const response = await fetch(path, options);
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || (data.errors || []).join("\n") || "操作失敗");
   return data;
+}
+
+function templateStorageEnabled() {
+  return Boolean(state.bootstrap?.templateStorage?.enabled);
+}
+
+function templateCatalogForTable(table) {
+  return (state.bootstrap?.templateStorage?.kinds || []).find((item) => item.sourceTable === table) || null;
+}
+
+function templateCatalogForKind(templateKind) {
+  return (state.bootstrap?.templateStorage?.kinds || []).find((item) => item.templateKind === templateKind) || null;
+}
+
+function templatesForKind(templateKind = state.activeTemplateKind) {
+  return state.templates.filter((item) => item.templateKind === templateKind);
+}
+
+function selectedTemplate() {
+  return state.templates.find((item) => item.templateId === state.selectedTemplateId) || null;
+}
+
+function syncTemplateButton() {
+  const button = $("#templateButton");
+  if (!button) return;
+  const catalog = templateCatalogForTable(state.activeTable);
+  button.hidden = !templateStorageEnabled() || !catalog;
+  button.title = catalog ? `管理${catalog.label}共用範本` : "目前資料群組不支援共用範本";
+  button.textContent = catalog ? `${catalog.label}範本` : "共用範本";
+}
+
+async function refreshTemplates(selectedId = "") {
+  if (!templateStorageEnabled()) {
+    state.templates = [];
+    state.selectedTemplateId = "";
+    return [];
+  }
+  const data = await apiJson("/api/templates");
+  state.templates = Array.isArray(data.templates) ? data.templates : [];
+  state.selectedTemplateId = selectedId && state.templates.some((item) => item.templateId === selectedId)
+    ? selectedId
+    : "";
+  return state.templates;
+}
+
+function nonEmptyTemplateEntries(template) {
+  const catalog = templateCatalogForKind(template?.templateKind);
+  if (!catalog || catalog.sourceTable !== template?.sourceTable || !template?.fields) return [];
+  const allowedFields = new Set(catalog.fields || []);
+  return Object.entries(template.fields).filter(([field, value]) => allowedFields.has(field) && typeof value === "string" && value !== "");
+}
+
+function applyTemplateFields(template, overwrite = false) {
+  const catalog = templateCatalogForKind(template?.templateKind);
+  const entries = nonEmptyTemplateEntries(template);
+  if (!catalog || !entries.length) return 0;
+  const table = catalog.sourceTable;
+  const rows = activeTables()[table] || (activeTables()[table] = []);
+  let targetIndex = state.activeTable === table ? Math.min(state.activeRecord, Math.max(0, rows.length - 1)) : 0;
+  if (catalog.applyMode === "new-or-blank" && !overwrite) {
+    targetIndex = rows.findIndex((record) => (catalog.fields || []).every((field) => !(record[field] || "")));
+    if (targetIndex < 0) {
+      rows.push(blankRecord(table));
+      targetIndex = rows.length - 1;
+    }
+  } else if (!rows.length) {
+    rows.push(blankRecord(table));
+    targetIndex = 0;
+  }
+  const record = rows[targetIndex] || rows[0];
+  let changed = 0;
+  for (const [field, value] of entries) {
+    if (overwrite || (record[field] ?? "") === "") {
+      if (record[field] !== value) changed += 1;
+      record[field] = value;
+    }
+  }
+  normalizeRowMetadata(table);
+  return changed;
+}
+
+function applyDefaultTemplates() {
+  let templateCount = 0;
+  let fieldCount = 0;
+  for (const template of state.templates.filter((item) => item.isDefault)) {
+    if (!nonEmptyTemplateEntries(template).length) continue;
+    const changed = applyTemplateFields(template, false);
+    templateCount += 1;
+    fieldCount += changed;
+  }
+  return { templateCount, fieldCount };
+}
+
+function renderTemplateDialog() {
+  const catalog = templateCatalogForKind(state.activeTemplateKind);
+  if (!catalog) return;
+  const templates = templatesForKind();
+  if (!templates.some((item) => item.templateId === state.selectedTemplateId)) {
+    state.selectedTemplateId = templates.find((item) => item.isDefault)?.templateId || templates[0]?.templateId || "";
+  }
+  $("#templateDialogTitle").textContent = `${catalog.label}共用範本`;
+  $("#templateScopeMessage").textContent = `只會保存 ${catalog.label}（${catalog.sourceTable}）白名單內的非空白欄位${catalog.fieldSelection ? "；可在下方選擇要收進範本的長文字" : ""}。案件編號、系統欄位與完整案件不會寫入 SQLite。`;
+  $("#templateSelect").innerHTML = templates.length
+    ? templates.map((item) => `<option value="${escapeHtml(item.templateId)}">${escapeHtml(item.name)}${item.isDefault ? "（預設）" : ""}</option>`).join("")
+    : `<option value="">尚無範本</option>`;
+  $("#templateSelect").value = state.selectedTemplateId;
+  syncTemplateSelection();
+}
+
+function renderTemplateFieldChoices(catalog, template) {
+  const container = $("#templateFieldChoices");
+  if (!catalog?.fieldSelection) {
+    container.hidden = true;
+    container.innerHTML = "<legend>這個範本要保存哪些長文字</legend>";
+    return;
+  }
+  const selectedFields = new Set(template ? Object.keys(template.fields || {}) : (catalog.fields || []));
+  container.hidden = false;
+  container.innerHTML = `<legend>這個範本要保存哪些長文字</legend>${(catalog.fields || []).map((field) => {
+    const definition = fieldDefinition(catalog.sourceTable, field);
+    return `<label><input type="checkbox" data-template-field-choice="${escapeHtml(field)}" ${selectedFields.has(field) ? "checked" : ""}> ${escapeHtml(definition?.label || field)}</label>`;
+  }).join("")}`;
+}
+
+function syncTemplateSelection() {
+  const template = selectedTemplate();
+  const catalog = templateCatalogForKind(state.activeTemplateKind);
+  $("#templateNameInput").value = template?.name || "";
+  $("#templateDefaultCheckbox").checked = Boolean(template?.isDefault);
+  $("#templateOverwriteCheckbox").checked = false;
+  renderTemplateFieldChoices(catalog, template);
+  $("#templateSummary").textContent = template
+    ? `「${template.name}」包含 ${nonEmptyTemplateEntries(template).length} 個非空白欄位${template.isDefault ? "，目前是此類別預設範本" : ""}。${catalog?.applyMode === "new-or-blank" ? "未勾選覆蓋時，會新增一筆備註或使用既有空白列。" : "未勾選覆蓋時，只會填入目前空白欄位。"}`
+    : "尚未儲存範本。請先在本頁填入資料，再輸入名稱並新增。";
+  for (const id of ["applyTemplateButton", "updateTemplateButton", "deleteTemplateButton"]) {
+    $(`#${id}`).disabled = !template;
+  }
+}
+
+async function openTemplateDialog() {
+  const catalog = templateCatalogForTable(state.activeTable);
+  if (!templateStorageEnabled() || !catalog) return;
+  state.activeTemplateKind = catalog.templateKind;
+  try {
+    await refreshTemplates();
+  } catch (error) {
+    toast(`無法更新共用範本清單：${error.message}`, "error");
+    return;
+  }
+  state.selectedTemplateId = templatesForKind(catalog.templateKind).find((item) => item.isDefault)?.templateId
+    || templatesForKind(catalog.templateKind)[0]?.templateId
+    || "";
+  renderTemplateDialog();
+  $("#templateDialog").showModal();
+}
+
+function currentTemplatePayload() {
+  const catalog = templateCatalogForKind(state.activeTemplateKind);
+  const record = currentRecord();
+  if (!catalog || catalog.sourceTable !== state.activeTable || !record) {
+    throw new Error("請先在目前資料群組新增並填寫一筆資料。 ");
+  }
+  let fields = deepClone(record);
+  if (catalog.fieldSelection) {
+    const selectedFields = new Set($$("[data-template-field-choice]:checked").map((input) => input.dataset.templateFieldChoice));
+    fields = Object.fromEntries(Object.entries(fields).filter(([field]) => selectedFields.has(field)));
+  }
+  return {
+    schemaVersion: state.schemaVersion,
+    templateKind: catalog.templateKind,
+    name: $("#templateNameInput").value.trim(),
+    fields,
+    isDefault: $("#templateDefaultCheckbox").checked,
+  };
+}
+
+async function saveCurrentAsTemplate() {
+  try {
+    const data = await apiJson("/api/templates", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(currentTemplatePayload()),
+    });
+    await refreshTemplates(data.template.templateId);
+    renderTemplateDialog();
+    setStatus(`已新增共用範本「${data.template.name}」`, "ok");
+    toast("範本已寫入 SQLite；完整案件仍只存在目前瀏覽器。 ");
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
+async function updateSelectedTemplate() {
+  const template = selectedTemplate();
+  if (!template) return;
+  try {
+    const data = await apiJson(`/api/templates/${encodeURIComponent(template.templateId)}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(currentTemplatePayload()),
+    });
+    await refreshTemplates(data.template.templateId);
+    renderTemplateDialog();
+    setStatus(`已更新共用範本「${data.template.name}」`, "ok");
+    toast("範本已用目前這一筆資料更新。 ");
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
+function applySelectedTemplate() {
+  const template = selectedTemplate();
+  if (!template) return;
+  const overwrite = $("#templateOverwriteCheckbox").checked;
+  const changed = applyTemplateFields(template, overwrite);
+  renderAll();
+  setStatus(`已套用範本「${template.name}」，更新 ${changed} 個欄位`, "warn");
+  toast(changed ? `已${overwrite ? "覆蓋或填入" : "填入"} ${changed} 個欄位。` : "沒有需要更新的欄位。 ");
+}
+
+async function deleteSelectedTemplate() {
+  const template = selectedTemplate();
+  if (!template || !window.confirm(`確定刪除共用範本「${template.name}」？`)) return;
+  try {
+    await apiJson(`/api/templates/${encodeURIComponent(template.templateId)}`, { method: "DELETE" });
+    await refreshTemplates();
+    renderTemplateDialog();
+    setStatus(`已刪除共用範本「${template.name}」`, "warn");
+    toast("共用範本已刪除。 ");
+  } catch (error) {
+    toast(error.message, "error");
+  }
 }
 
 async function caseBootstrap() {
@@ -1613,18 +2210,27 @@ async function caseBootstrap() {
   state.schemaVersion = data.schemaVersion;
   state.codebook = codebook;
   state.tables = mergeCaseTables(data.tables, data.extraTables);
-  if (data.initialCase === "blank") caseNewBlank("空白案件");
+  await refreshTemplates();
+  data.defaultApplication = data.initialCase === "blank"
+    ? caseNewBlank("空白案件", true)
+    : { templateCount: 0, fieldCount: 0 };
   return data;
 }
 
 async function caseImportDataTxt(file) {
-  const data = await apiJson("/api/import-data-txt", { method: "POST", body: await file.arrayBuffer() });
+  const importingZip = sourceIsZip(file);
+  const data = await apiJson(importingZip ? "/api/import-zip" : "/api/import-data-txt", {
+    method: "POST", body: await file.arrayBuffer(),
+  });
   state.tables = mergeCaseTables(data.tables, data.extraTables);
   state.sourceName = file.name;
+  state.sourceZipFile = importingZip ? file : null;
+  state.sourceZipDataTxtPath = data.package?.dataTxtPath || "";
   state.formSet = "A";
   state.activeTable = "BMSBASE";
   state.activeTableByFormSet.A = "BMSBASE";
   state.activeRecord = 0;
+  syncZipExportAvailability();
   return data;
 }
 
@@ -1643,10 +2249,11 @@ async function caseImportJson(file) {
   state.activeTableByFormSet[state.formSet] = state.activeTable;
   state.activeRecord = 0;
   state.sourceName = file.name;
+  clearSourceZip();
   return data;
 }
 
-function caseNewBlank(sourceName = "新空白案件") {
+function caseNewBlank(sourceName = "新空白案件", withDefaults = false) {
   const emptyTables = {};
   for (const table of [...state.bootstrap.tableOrder, ...state.bootstrap.extraTableOrder]) emptyTables[table] = [];
   state.tables = emptyTables;
@@ -1662,6 +2269,8 @@ function caseNewBlank(sourceName = "新空白案件") {
   state.activeTableByFormSet = { A: "BMSBASE", B: "BMSSC", C: "C21_3", D: "BMSBASE" };
   state.activeRecord = 0;
   state.sourceName = sourceName;
+  clearSourceZip();
+  return withDefaults ? applyDefaultTemplates() : { templateCount: 0, fieldCount: 0 };
 }
 
 function caseValidate() {
@@ -1676,6 +2285,14 @@ function caseExport() {
   });
 }
 
+function caseExportZip() {
+  if (!state.sourceZipFile) throw new Error("請先載入含有 data.txt 的 ZIP。 ");
+  const form = new FormData();
+  form.append("case", new Blob([JSON.stringify(caseEnvelope())], { type: "application/json" }), "case.json");
+  form.append("archive", state.sourceZipFile, state.sourceZipFile.name);
+  return fetch("/api/export-zip", { method: "POST", body: form });
+}
+
 function caseExportJson() {
   for (const table of [...state.bootstrap.tableOrder, ...state.bootstrap.extraTableOrder]) normalizeRowMetadata(table);
   const json = `\uFEFF${JSON.stringify(caseEnvelope(), null, 2)}\n`;
@@ -1683,18 +2300,24 @@ function caseExportJson() {
 }
 
 async function loadDataTxt(file) {
-  if (hasExtraData() && !window.confirm("載入另一份 data.txt 會清除目前完整案件 JSON 中的道路、勘驗、逐月材料與附件資料。確定繼續？")) {
+  if (hasExtraData() && !window.confirm("載入另一份 data.txt／ZIP 會清除目前完整案件 JSON 中的道路、勘驗、逐月材料與附件資料。確定繼續？")) {
     $("#dataFileInput").value = "";
     return;
   }
-  setStatus("正在解析 CP950 data.txt…", "warn");
+  const importingZip = sourceIsZip(file);
+  setStatus(importingZip ? "正在讀取 ZIP 內的 data.txt…" : "正在解析 CP950 data.txt…", "warn");
   try {
     const data = await caseImportDataTxt(file);
     renderAll();
-    setStatus(`已載入 ${file.name}，13 表結構正確`, data.validation.ok ? "ok" : "warn");
-    toast("data.txt 已載入；原始欄位與未顯示欄位也會完整保留。 ");
+    const packageText = importingZip
+      ? `；已保留原 ZIP 的 ${data.package.entryCount} 個項目，匯出時可只替換 ${data.package.dataTxtPath}`
+      : "";
+    setStatus(`已載入 ${file.name}，13 表結構正確${packageText}`, data.validation.ok ? "ok" : "warn");
+    toast(importingZip
+      ? "ZIP 內的 data.txt 已載入；原 ZIP 會保留到本次頁面關閉為止。 "
+      : "data.txt 已載入；原始欄位與未顯示欄位也會完整保留。 ");
   } catch (error) {
-    setStatus("data.txt 載入失敗", "error");
+    setStatus(importingZip ? "ZIP 載入失敗" : "data.txt 載入失敗", "error");
     toast(error.message, "error");
   } finally {
     $("#dataFileInput").value = "";
@@ -1722,11 +2345,20 @@ async function loadCaseJson(file) {
 }
 
 function newBlankCase() {
-  if (!window.confirm("建立新空白案件會清除目前畫面中的所有案件資料；尚未匯出的修改不會保留。確定繼續？")) return;
-  caseNewBlank();
+  $("#clearCaseDialog").showModal();
+}
+
+function confirmClearCase() {
+  const applied = caseNewBlank("全案清空後的新案件", true);
+  $("#clearCaseDialog").close();
   renderAll();
-  setStatus("已建立空白案件；BM_TEC、BMSSC 與所有子表均已清空", "warn");
-  toast("請先填案件主檔，再新增地號、人員、樓層等資料。 ");
+  const defaultText = applied.templateCount
+    ? `；已帶入 ${applied.templateCount} 個預設範本、${applied.fieldCount} 個欄位`
+    : "；沒有非空白預設範本需要帶入";
+  setStatus(`已全案清空${defaultText}`, "warn");
+  toast(applied.templateCount
+    ? "案件已清空並帶入共用預設範本。 "
+    : "案件已清空；請先填案件主檔，再新增其他資料。 ");
 }
 
 function validationHtml(result) {
@@ -1769,18 +2401,36 @@ async function exportDataTxt() {
       return;
     }
     const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "data.txt";
-    document.body.append(anchor);
-    anchor.click();
-    anchor.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+    downloadBlob("data.txt", blob);
+    $("#exportMenu").open = false;
     setStatus(`已匯出 data.txt（CP950，${blob.size.toLocaleString()} bytes）`, "ok");
     toast("data.txt 已完整產生：13 表、596 欄、固定欄序、CRLF、CP950。擴充資料請另存完整案件 JSON。 ");
   } catch (error) {
     setStatus("匯出失敗", "error");
+    toast(error.message, "error");
+  }
+}
+
+async function exportZipPackage() {
+  setStatus("正在驗證並重新封裝 ZIP…", "warn");
+  try {
+    const response = await caseExportZip();
+    if (!response.ok) {
+      const result = await response.json();
+      if (result.errors) showValidation(result);
+      else throw new Error(result.error || "ZIP 匯出失敗");
+      setStatus("匯出前檢查未通過", "error");
+      return;
+    }
+    const blob = await response.blob();
+    const originalName = state.sourceZipFile.name;
+    const filename = `${originalName.replace(/\.zip$/i, "")}_updated.zip`;
+    downloadBlob(filename, blob);
+    $("#exportMenu").open = false;
+    setStatus(`已匯出 ${filename}；僅替換 ${state.sourceZipDataTxtPath || "data.txt"}`, "ok");
+    toast("ZIP 已重新封裝；其他檔案的內容與路徑均保持不變。 ");
+  } catch (error) {
+    setStatus("ZIP 匯出失敗", "error");
     toast(error.message, "error");
   }
 }
@@ -2038,6 +2688,10 @@ function xmlText(value) {
 
 function downloadTextFile(filename, text, mimeType) {
   const blob = new Blob([text], { type: `${mimeType};charset=utf-8` });
+  downloadBlob(filename, blob);
+}
+
+function downloadBlob(filename, blob) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -2085,6 +2739,31 @@ function openSampleDialog() {
   $("#sampleDialog").showModal();
 }
 
+let fileDragDepth = 0;
+
+function hasDraggedFiles(event) {
+  return Array.from(event.dataTransfer?.types || []).includes("Files");
+}
+
+function hideFileDropOverlay() {
+  fileDragDepth = 0;
+  document.body.classList.remove("file-drag-active");
+  $("#fileDropOverlay").setAttribute("aria-hidden", "true");
+}
+
+function showFileDropOverlay() {
+  document.body.classList.add("file-drag-active");
+  $("#fileDropOverlay").setAttribute("aria-hidden", "false");
+}
+
+function loadDroppedCaseFile(file) {
+  if (!file || !/\.(?:txt|zip)$/i.test(file.name)) {
+    toast("只支援 data.txt 或 ZIP 檔案。", "error");
+    return;
+  }
+  loadDataTxt(file);
+}
+
 async function bootstrap() {
   try {
     const data = await caseBootstrap();
@@ -2093,7 +2772,10 @@ async function bootstrap() {
     $("#targetTableSelect").innerHTML = tableOptions;
     $("#sampleTableSelect").innerHTML = tableOptions;
     renderAll();
-    setStatus("已建立空白案件，可以開始填寫或主動載入既有資料", "ok");
+    const defaults = data.defaultApplication || { templateCount: 0, fieldCount: 0 };
+    setStatus(defaults.templateCount
+      ? `已建立空白案件並帶入 ${defaults.templateCount} 個預設範本、${defaults.fieldCount} 個欄位`
+      : "已建立空白案件，可以開始填寫或主動載入既有資料", "ok");
   } catch (error) {
     setStatus("無法連接本機格式服務", "error");
     toast(error.message, "error");
@@ -2104,6 +2786,16 @@ $("#loadDataButton").addEventListener("click", () => $("#dataFileInput").click()
 $("#loadCaseJsonButton").addEventListener("click", () => $("#caseJsonFileInput").click());
 $("#exportCaseJsonButton").addEventListener("click", exportCaseJson);
 $("#newCaseButton").addEventListener("click", newBlankCase);
+$("#confirmClearCaseButton").addEventListener("click", confirmClearCase);
+$("#templateButton").addEventListener("click", openTemplateDialog);
+$("#templateSelect").addEventListener("change", (event) => {
+  state.selectedTemplateId = event.target.value;
+  syncTemplateSelection();
+});
+$("#saveTemplateButton").addEventListener("click", saveCurrentAsTemplate);
+$("#updateTemplateButton").addEventListener("click", updateSelectedTemplate);
+$("#applyTemplateButton").addEventListener("click", applySelectedTemplate);
+$("#deleteTemplateButton").addEventListener("click", deleteSelectedTemplate);
 $("#dataFileInput").addEventListener("change", (event) => { if (event.target.files[0]) loadDataTxt(event.target.files[0]); });
 $("#caseJsonFileInput").addEventListener("change", (event) => { if (event.target.files[0]) loadCaseJson(event.target.files[0]); });
 $("#recordSelect").addEventListener("change", (event) => { state.activeRecord = Number(event.target.value); renderEditor(); });
@@ -2118,11 +2810,14 @@ $("#bulkAddOneButton").addEventListener("click", () => addBulkRows(1));
 $("#bulkAddTenButton").addEventListener("click", () => addBulkRows(10));
 $("#bulkDuplicateButton").addEventListener("click", duplicateBulkRows);
 $("#bulkDeleteButton").addEventListener("click", deleteBulkRows);
+$("#bulkComparisonToggleButton").addEventListener("click", toggleBulkComparisonSide);
+$("#bulkCopyAllToOldButton").addEventListener("click", copyAllBulkCurrentValuesToOld);
 $("#fieldSearch").addEventListener("input", applyFieldSearch);
 $("#toggleSectionsButton").addEventListener("click", toggleAllSections);
 $("#toggleRawFieldsButton").addEventListener("click", toggleRawFieldVisibility);
 $("#validateButton").addEventListener("click", () => validateData(true));
-$("#exportButton").addEventListener("click", exportDataTxt);
+$("#exportDataTxtButton").addEventListener("click", exportDataTxt);
+$("#exportZipButton").addEventListener("click", exportZipPackage);
 $("#openConvertButton").addEventListener("click", () => {
   state.sourceRows = []; state.sourceHeaders = []; state.mappings = {};
   $("#sourceFileInput").value = "";
@@ -2144,6 +2839,30 @@ $("#targetTableSelect").addEventListener("change", () => {
   renderMappingTable();
 });
 $("#applyMappingButton").addEventListener("click", applyMapping);
+window.addEventListener("dragenter", (event) => {
+  if (!hasDraggedFiles(event)) return;
+  event.preventDefault();
+  fileDragDepth += 1;
+  showFileDropOverlay();
+});
+window.addEventListener("dragover", (event) => {
+  if (!hasDraggedFiles(event)) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+});
+window.addEventListener("dragleave", (event) => {
+  if (!fileDragDepth) return;
+  fileDragDepth = Math.max(0, fileDragDepth - 1);
+  if (!fileDragDepth) hideFileDropOverlay();
+});
+window.addEventListener("dragend", hideFileDropOverlay);
+window.addEventListener("drop", (event) => {
+  if (!hasDraggedFiles(event)) return;
+  event.preventDefault();
+  const file = event.dataTransfer?.files?.[0];
+  hideFileDropOverlay();
+  loadDroppedCaseFile(file);
+});
 $("#optionPickerSearch").addEventListener("input", () => renderOptionPicker(true));
 $("#optionPickerSearch").addEventListener("keydown", (event) => {
   if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -2172,7 +2891,11 @@ $("#optionPickerList").addEventListener("click", (event) => {
   if (option) choosePickerValue(option[0], option[1]);
 });
 $("#clearPickerButton").addEventListener("click", () => choosePickerValue("", ""));
-$("#optionPickerDialog").addEventListener("close", () => { state.picker.target = null; });
+$("#optionPickerDialog").addEventListener("close", () => {
+  state.picker.target = null;
+  state.picker.onChoose = null;
+  state.picker.currentValue = "";
+});
 $("#clearTableDialog").addEventListener("close", () => { state.pendingClearTable = ""; });
 $$("dialog.dialog").forEach((dialog) => dialog.addEventListener("click", closeDialogFromBackdrop));
 $$('[data-close-dialog]').forEach((button) => button.addEventListener("click", () => $(`#${button.dataset.closeDialog}`).close()));

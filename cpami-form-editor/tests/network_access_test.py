@@ -12,6 +12,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 import server  # noqa: E402
 
 
+assert server.DEFAULT_HOST == "0.0.0.0"
+
+
 def make_handler(
     client: str,
     path: str = "/",
@@ -42,13 +45,25 @@ local, local_statuses, _ = make_handler("127.0.0.1")
 assert local.authorize_request() is True
 assert local_statuses == []
 
-missing, missing_statuses, _ = make_handler("192.168.1.50")
+for private_client in [
+    "10.20.30.40",
+    "172.16.5.8",
+    "192.168.1.50",
+    "fd12:3456:789a::25",
+    "fe80::25",
+    "::ffff:192.168.1.51",
+]:
+    private, private_statuses, _ = make_handler(private_client)
+    assert private.authorize_request() is True
+    assert private_statuses == []
+
+missing, missing_statuses, _ = make_handler("8.8.8.8")
 assert missing.authorize_request() is False
 assert missing_statuses == [403]
 assert "完整網址" in missing.wfile.getvalue().decode("utf-8")
 
 query, query_statuses, query_headers = make_handler(
-    "192.168.1.50", "/?token=test-network-token"
+    "8.8.8.8", "/?token=test-network-token"
 )
 assert query.authorize_request() is False
 assert query_statuses == [303]
@@ -58,15 +73,15 @@ assert len(cookie_headers) == 1
 assert "HttpOnly" in cookie_headers[0] and "SameSite=Strict" in cookie_headers[0]
 
 cookie, cookie_statuses, _ = make_handler(
-    "192.168.1.50", cookie="cpami_access=test-network-token"
+    "8.8.8.8", cookie="cpami_access=test-network-token"
 )
 assert cookie.authorize_request() is True
 assert cookie_statuses == []
 
 wrong, wrong_statuses, _ = make_handler(
-    "192.168.1.50", cookie="cpami_access=wrong"
+    "8.8.8.8", cookie="cpami_access=wrong"
 )
 assert wrong.authorize_request() is False
 assert wrong_statuses == [403]
 
-print("Network access tests passed: wildcard host, loopback bypass, remote token redirect/cookie, and invalid-token rejection.")
+print("Network access tests passed: wildcard host, private-LAN bypass, public token redirect/cookie, and invalid-token rejection.")

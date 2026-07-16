@@ -145,7 +145,7 @@
 硬性限制：
 - cpami_core.py 不得 import http、socket 或任何第三方套件。
 - 搬移函式時邏輯逐行保留，不做順手重寫；行為差異只允許「TEMPLATE 全域改參數」一項。
-- authorize_request、權杖 cookie 邏輯不得改動。
+- authorize_request、權杖 cookie 邏輯不得改動（此為 Prompt 2 當時的重構限制；2026-07-16 起依擁有者決策，私有內網免權杖，其他來源仍維持權杖與 cookie，現行規則以根目錄 `CLAUDE.md` 為準）。
 
 驗收：
 - node --check .\web\app.js、node .\tests\frontend_smoke_test.js 通過。

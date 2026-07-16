@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import copy
 import hashlib
+import io
 import json
+import os
+import struct
 import urllib.error
 import urllib.request
+import zipfile
 from pathlib import Path
 from typing import Any
 
 
-BASE_URL = "http://127.0.0.1:8765"
+BASE_URL = os.environ.get("CPAMI_TEST_BASE_URL", "http://127.0.0.1:8765")
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_PATH = PROJECT_ROOT.parent / "data.txt"
 SCHEMA_PATH = PROJECT_ROOT / "schema" / "data_txt_schema.json"
@@ -58,6 +63,80 @@ def post_json_response(path: str, payload: dict[str, Any]) -> tuple[dict[str, An
     with response:
         assert response.headers.get_content_type() == "application/json"
         return json.load(response), response.status
+
+
+def package_zip(data_txt: bytes) -> bytes:
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.comment = "CPAMI package fixture".encode("ascii")
+        archive.writestr("案件資料/data.txt", data_txt)
+        archive.writestr("案件資料/說明.txt", "此檔案不應被修改。".encode("utf-8"))
+        binary = zipfile.ZipInfo("attachments/drawing.bin", date_time=(2025, 6, 1, 12, 30, 0))
+        binary.compress_type = zipfile.ZIP_STORED
+        binary.external_attr = 0o644 << 16
+        archive.writestr(binary, bytes(range(256)))
+    return output.getvalue()
+
+
+def export_zip(payload: dict[str, Any], archive: bytes) -> tuple[bytes, str, int]:
+    boundary = b"----CPAMIZipRoundtripBoundary"
+    case_json = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    body = b"\r\n".join(
+        [
+            b"--" + boundary,
+            b'Content-Disposition: form-data; name="case"; filename="case.json"',
+            b"Content-Type: application/json",
+            b"",
+            case_json,
+            b"--" + boundary,
+            b'Content-Disposition: form-data; name="archive"; filename="sample-package.zip"',
+            b"Content-Type: application/zip",
+            b"",
+            archive,
+            b"--" + boundary + b"--",
+            b"",
+        ]
+    )
+    return post(
+        "/api/export-zip",
+        body,
+        f"multipart/form-data; boundary={boundary.decode('ascii')}",
+    )
+
+
+def local_zip_header(archive: bytes, name: str) -> dict[str, Any]:
+    with zipfile.ZipFile(io.BytesIO(archive), "r") as package:
+        entry = package.getinfo(name)
+        offset = entry.header_offset
+        (
+            signature,
+            version_needed,
+            _flags,
+            _method,
+            _time,
+            _date,
+            _crc,
+            compressed_size,
+            file_size,
+            name_length,
+            extra_length,
+        ) = struct.unpack_from("<IHHHHHIIIHH", archive, offset)
+    assert signature == 0x04034B50
+    extra_start = offset + 30 + name_length
+    extra = archive[extra_start:extra_start + extra_length]
+    extra_ids: list[int] = []
+    cursor = 0
+    while cursor + 4 <= len(extra):
+        extra_id, size = struct.unpack_from("<HH", extra, cursor)
+        extra_ids.append(extra_id)
+        cursor += 4 + size
+    assert cursor == len(extra)
+    return {
+        "versionNeeded": version_needed,
+        "compressedSize": compressed_size,
+        "fileSize": file_size,
+        "extraIds": extra_ids,
+    }
 
 
 index_bytes, index_type, index_status = get("/")
@@ -165,6 +244,62 @@ assert wrong_version in version_error["error"]
 assert schema["schemaVersion"] in version_error["error"]
 assert envelope_export_status == 200 and envelope_export == fixture
 
+original_package = package_zip(fixture)
+package_import_body, package_import_type, package_import_status = post(
+    "/api/import-zip", original_package, "application/zip"
+)
+package_import = json.loads(package_import_body)
+assert package_import_type == "application/json" and package_import_status == 200
+assert package_import["package"] == {
+    "dataTxtPath": "案件資料/data.txt",
+    "entryCount": 3,
+}
+assert package_import["tables"] == fixture_import["tables"]
+
+unchanged_zip_payload = {
+    "schemaVersion": schema["schemaVersion"],
+    "formSet": "A",
+    "tables": copy.deepcopy(package_import["tables"]),
+    "extraTables": {table: [] for table in extension_schema["extraTableOrder"]},
+}
+unchanged_package, unchanged_package_type, unchanged_package_status = export_zip(
+    unchanged_zip_payload, original_package
+)
+assert unchanged_package_status == 200
+assert unchanged_package_type == "application/zip"
+assert unchanged_package == original_package
+
+zip_tables = copy.deepcopy(package_import["tables"])
+zip_tables["BMSBASE"][0]["BUILDING_NAME"] = "ZIP 更新範例工程"
+zip_payload = {
+    "schemaVersion": schema["schemaVersion"],
+    "formSet": "A",
+    "tables": zip_tables,
+    "extraTables": {table: [] for table in extension_schema["extraTableOrder"]},
+}
+expected_zip_data_txt, _expected_type, expected_zip_status = export_tables(zip_tables)
+exported_package, exported_package_type, exported_package_status = export_zip(
+    zip_payload, original_package
+)
+assert expected_zip_status == exported_package_status == 200
+assert exported_package_type == "application/zip"
+with zipfile.ZipFile(io.BytesIO(original_package), "r") as original_archive, zipfile.ZipFile(
+    io.BytesIO(exported_package), "r"
+) as exported_archive:
+    assert exported_archive.namelist() == original_archive.namelist()
+    assert exported_archive.comment == original_archive.comment
+    assert exported_archive.read("案件資料/data.txt") == expected_zip_data_txt
+    for name in ["案件資料/說明.txt", "attachments/drawing.bin"]:
+        assert exported_archive.read(name) == original_archive.read(name)
+        assert exported_archive.getinfo(name).date_time == original_archive.getinfo(name).date_time
+        assert exported_archive.getinfo(name).external_attr == original_archive.getinfo(name).external_attr
+    for name in exported_archive.namelist():
+        header = local_zip_header(exported_package, name)
+        assert header["versionNeeded"] < 45
+        assert header["compressedSize"] != 0xFFFFFFFF
+        assert header["fileSize"] != 0xFFFFFFFF
+        assert 0x0001 not in header["extraIds"]
+
 field_count = sum(len(fields) for fields in bootstrap["fieldOrder"].values())
 real_roundtrip: bool | None = None
 assert bootstrap["initialCase"] == "blank"
@@ -234,6 +369,14 @@ report = {
         "extraRoadRows": len(case_import["extraTables"]["BMSROAD"]),
         "extraC21Rows": len(case_import["extraTables"]["C21_3"]),
         "extraElevatorRows": len(case_import["extraTables"]["BMELVTR"]),
+    },
+    "zipPackage": {
+        "import": package_import_status,
+        "export": exported_package_status,
+        "dataTxtPath": package_import["package"]["dataTxtPath"],
+        "unchangedArchiveByteIdentical": unchanged_package == original_package,
+        "smallEntriesUseZip20": True,
+        "otherEntriesUnchanged": True,
     },
     "realRoundtrip": real_roundtrip,
     "bootstrapIsBlank": all(not rows for rows in bootstrap["tables"].values()),

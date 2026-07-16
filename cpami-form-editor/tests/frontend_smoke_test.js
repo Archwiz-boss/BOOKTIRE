@@ -18,11 +18,18 @@ source = source.slice(0, source.indexOf('$("#loadDataButton")'));
 source += `\nglobalThis.__test = {
   TABLE_CONFIG, FORM_SETS, state, activeTables, formCatalogForSet, optionsFor, allFields, sampleRowsFor,
   buildSampleCsv, buildSampleXml, parseDelimited, guessTarget, codeSpecFor, CODE_OPTIONS,
-  COPY_CURRENT_TO_OLD, copyMappedValues, sortOptionsByName, leadingChineseNumber,
+  COPY_CURRENT_TO_OLD, BULK_COMPARISON_CONFIG, RECOMMENDED_FORM_PREFIXES_BY_APPLY_TYPE,
+  copyMappedValues, sortOptionsByName, leadingChineseNumber,
   fieldDefinition, renderField, renderBulkControl, bulkColumnClass, sectionStartsOpen,
+  currentApplyType, currentApplyTypeLabel, recommendedTablesForApplyType, recommendedNoticeLine,
+  bulkComparisonConfig, bulkComparisonPairs, bulkFieldNamesForTable, bulkValuesDiffer,
+  bulkFieldDiffers, bulkRowHasDifferences,
   useModalForOptions, renderInlineOptionMarkup, clearTableData, isDialogBackdropClick,
   fieldOrderFor, tableMetaFor, standardTablesPayload, extraTablesPayload, mergeCaseTables,
-  hasExtraData, caseEnvelope, caseNewBlank, visibleSections, visibleFields
+  hasExtraData, caseEnvelope, caseNewBlank, visibleSections, visibleFields, sourceIsZip
+  , templateStorageEnabled, templateCatalogForTable, nonEmptyTemplateEntries,
+  applyTemplateFields, applyDefaultTemplates, regulatedNoteCategories,
+  memoPresetContext, memoPresetOptions, memoRecordIsBlank, memoTargetRecord
 };`;
 
 const context = {
@@ -55,6 +62,22 @@ assert.deepEqual(Array.from(app.FORM_SETS.D.tables), ["BMSBASE", "BMSLAN", "BMSL
 assert.equal(new Set(Object.values(app.FORM_SETS).flatMap(({ tables }) => tables)).size, Object.keys(app.TABLE_CONFIG).length);
 assert.strictEqual(app.activeTables(), app.state.tables, "activeTables must expose the current case tables");
 
+app.state.tables.BMSBASE[0].APPLY_TYPE = "A11-1";
+assert.equal(app.currentApplyType(), "A11-1");
+assert.equal(app.currentApplyTypeLabel(), "建造執照申請");
+const a11Recommended = app.recommendedTablesForApplyType();
+for (const table of ["BMSBASE", "BMSLAN", "BMSLANOWNER", "BMSMEMO", "BMSP01", "BMSP02", "BMSP04", "BMSPARK", "BMSSTAIR"]) {
+  assert(a11Recommended.has(table), `A11 application should recommend ${table}`);
+}
+assert(!a11Recommended.has("BMSWORK"), "A11 should leave unrelated groups visible without marking them as recommended");
+const c21Recommended = app.recommendedTablesForApplyType("C21-1");
+assert(c21Recommended.has("C21_3") && c21Recommended.has("BMELVTR"), "C21 should include its C21/C22 companion data groups");
+const b14Recommended = app.recommendedTablesForApplyType("B14-1");
+assert(b14Recommended.has("BMSCHK") && !b14Recommended.has("RPTPHOTO"), "B14-1 recommendations should follow confirmed form bindings, not unrelated B14 forms");
+assert(app.recommendedNoticeLine().includes("未標示的群組仍可照案件需要使用"));
+app.state.tables.BMSBASE[0].APPLY_TYPE = "";
+assert(app.recommendedNoticeLine().includes("請先在「案件主檔」設定申請類型"));
+
 app.state.formSet = "A";
 assert(!app.visibleSections("BMSBASE").some(({ section }) => section.formSets?.includes("B")), "B-only BMSBASE sections must stay hidden in A");
 const aBaseFieldCount = app.visibleFields("BMSBASE").length;
@@ -71,8 +94,8 @@ assert(source.includes('data.initialCase === "blank"'));
 assert(source.includes("已建立空白案件，可以開始填寫或主動載入既有資料"));
 assert.equal(
   source.split("JSON.stringify(caseEnvelope())").length - 1,
-  2,
-  "Validate and export must both send the versioned case envelope",
+  3,
+  "Validate, data.txt export and ZIP export must send the versioned case envelope",
 );
 assert(source.includes("formSet: state.formSet") && source.includes("tables: standardTablesPayload()") && source.includes("extraTables: extraTablesPayload()"), "The case envelope must separate data.txt and extension tables");
 assert.equal(schema.schemaVersion, extensionSchema.schemaVersion);
@@ -91,15 +114,90 @@ app.caseNewBlank("空白案件");
 assert.equal(app.state.sourceName, "空白案件");
 assert.equal(app.state.tables.BMSBASE.length, 1, "A blank case must be immediately editable");
 assert.equal(app.state.tables.BMSBASE[0].LAST_MODIFY, "00001");
+assert.equal(app.state.sourceZipFile, null, "A blank case must not retain a ZIP package");
+assert.equal(app.sourceIsZip({ name: "案件.ZIP", type: "" }), true);
+assert.equal(app.sourceIsZip({ name: "data.txt", type: "text/plain" }), false);
 for (const table of [...schema.tableOrder, ...extensionSchema.extraTableOrder]) {
   if (table !== "BMSBASE") assert.equal(app.state.tables[table].length, 0, `${table} must start empty`);
 }
 app.state.tables.BMSBASE[0].BMPAS = "I80";
 
-assert.equal(codebook.version, 2);
+app.state.bootstrap.templateStorage = {
+  enabled: true,
+  mode: "sqlite-templates",
+  kinds: [
+    { templateKind: "designer", label: "設計建築師", sourceTable: "BMSP02", fields: ["CNAME", "TEL_NO"] },
+    { templateKind: "case_memo", label: "案件備註", sourceTable: "BMSMEMO", fields: ["MEMO_SEQ", "MEMO_SEQ_NAME", "DESE"], applyMode: "new-or-blank" },
+    { templateKind: "form_long_text", label: "書表長文字", sourceTable: "BMSBASE", fields: ["A12_TITTLE", "A12_5TITLE"], fieldSelection: true },
+  ],
+};
+const designerTemplate = {
+  templateId: "test-designer",
+  templateKind: "designer",
+  sourceTable: "BMSP02",
+  name: "測試建築師",
+  isDefault: true,
+  fields: { CNAME: "測試建築師", TEL_NO: "04-22220000", INDEX_KEY: "must-not-apply", UNKNOWN: "must-not-apply" },
+};
+const memoDefaultTemplate = {
+  templateId: "test-memo", templateKind: "case_memo", sourceTable: "BMSMEMO", name: "測試備註", isDefault: true,
+  fields: { MEMO_SEQ_NAME: "測試程序", DESE: "這是虛構的案件備註。", CR_DATE: "must-not-apply" },
+};
+const longTextDefaultTemplate = {
+  templateId: "test-long-text", templateKind: "form_long_text", sourceTable: "BMSBASE", name: "測試長文字", isDefault: true,
+  fields: { A12_TITTLE: "虛構土地使用權同意書前言。", A12_5TITLE: "虛構共同壁協定前言。", LICENSE: "must-not-apply" },
+};
+app.state.templates = [designerTemplate, memoDefaultTemplate, longTextDefaultTemplate];
+const defaultsApplied = app.caseNewBlank("套用預設的空白案件", true);
+assert.equal(defaultsApplied.templateCount, 3);
+assert.equal(app.state.tables.BMSP02.length, 1, "A non-empty default template should create one personnel row");
+assert.equal(app.state.tables.BMSP02[0].CNAME, "測試建築師");
+assert.equal(app.state.tables.BMSP02[0].TEL_NO, "04-22220000");
+assert.equal(app.state.tables.BMSP02[0].INDEX_KEY, "", "Template application must not replace system keys");
+assert.equal(app.state.tables.BMSMEMO.length, 1, "A memo default should create one editable memo row");
+assert.equal(app.state.tables.BMSMEMO[0].MEMO_SEQ_NAME, "測試程序");
+assert.equal(app.state.tables.BMSMEMO[0].DESE, "這是虛構的案件備註。");
+assert.equal(app.state.tables.BMSMEMO[0].CR_DATE, "", "Memo templates must not apply audit fields");
+assert.equal(app.state.tables.BMSBASE[0].A12_TITTLE, "虛構土地使用權同意書前言。");
+assert.equal(app.state.tables.BMSBASE[0].A12_5TITLE, "虛構共同壁協定前言。");
+assert.equal(app.state.tables.BMSBASE[0].LICENSE, "", "Long-text templates must not apply unrelated case fields");
+assert.equal(app.templateCatalogForTable("BMSBASE").templateKind, "form_long_text");
+assert.equal(app.templateCatalogForTable("BMSMEMO").templateKind, "case_memo");
+app.state.activeTable = "BMSMEMO";
+app.state.activeRecord = 0;
+memoDefaultTemplate.fields.DESE = "第二則虛構案件備註。";
+assert.equal(app.applyTemplateFields(memoDefaultTemplate, false), 2, "Applying a memo template should populate a new row when the current row is not blank");
+assert.equal(app.state.tables.BMSMEMO.length, 2);
+assert.equal(app.state.tables.BMSMEMO[0].DESE, "這是虛構的案件備註。", "The existing memo must remain unchanged without explicit overwrite");
+assert.equal(app.state.tables.BMSMEMO[1].DESE, "第二則虛構案件備註。");
+app.state.activeTable = "BMSP02";
+app.state.activeRecord = 0;
+app.state.tables.BMSP02[0].CNAME = "案件既有建築師";
+designerTemplate.fields.CNAME = "範本建築師";
+assert.equal(app.applyTemplateFields(designerTemplate, false), 0, "Default apply should preserve filled case fields");
+assert.equal(app.state.tables.BMSP02[0].CNAME, "案件既有建築師");
+assert.equal(app.applyTemplateFields(designerTemplate, true), 1, "Explicit overwrite should replace filled case fields");
+assert.equal(app.state.tables.BMSP02[0].CNAME, "範本建築師");
+app.state.templates = [];
+app.state.activeTable = "BMSBASE";
+app.state.tables.BMSBASE[0].BMPAS = "I80";
+
+assert.equal(codebook.version, 3);
 assert.equal(codebook.source.bldcodeRows, 22383);
 assert.equal(codebook.officialSections.length, 1626);
 assert.equal(new Set(codebook.officialSections.map((row) => row.district)).size, 29);
+assert.equal(app.regulatedNoteCategories().length, 6);
+const regulatedProcedures = app.regulatedNoteCategories().flatMap((category) => category.procedures);
+const regulatedTemplates = regulatedProcedures.flatMap((procedure) => procedure.templates);
+assert.equal(regulatedProcedures.length, 52);
+assert.equal(regulatedTemplates.length, 89);
+assert.equal(codebook.legacyPresets.regulatedNotes.unmatchedTemplates.length, 0);
+assert.equal(regulatedProcedures.find((item) => item.label === "公有建築物").templates.length, 2, "Legacy public-art label mismatch should be normalized");
+assert.equal(regulatedProcedures.find((item) => item.label === "部分使照").templates.length, 1, "Legacy partial-occupancy typo should be normalized");
+assert.equal(app.optionsFor("BMSBASE", "LAW_01", {}).length, 42, "The newer Build.mdb fire-safety law list should replace the stale list");
+assert.equal(app.optionsFor("BMSBASE", "LAW_03", {}).length, 5, "The newer Build.mdb seismic law list should replace the stale list");
+assert(app.optionsFor("BMSBASE", "LAW_01", {}).some(([code]) => code === "42"));
+assert.equal(app.codeSpecFor("BMSBASE", "LAW_02"), null, "LAW_02 is an approval date, not a BMLAW2 code");
 
 const formSetCodes = { A: ["A"], B: ["B", "G"], C: ["C"], D: ["D", "F", "H"] };
 for (const [formSet, codes] of Object.entries(formSetCodes)) {
@@ -154,6 +252,26 @@ assert.equal(stairRecord.USAGE_CODE1_OLD_T, "H2");
 assert.equal(stairRecord.USAGE_CODE2_OLD, "");
 assert.equal(stairRecord.TERRACE_AREA_OLD, "");
 
+const workRecord = {
+  CONSNAME: "範例圍牆", BUILDING_KIND: "RC造", LENGTH: "10", HEIGHT: "2", WIDE: "0.15", AREA: "20", DESE: "虛構工作物",
+  CONSNAME_OLD: "舊名稱", BUILDING_KIND_OLD: "", LENGTH_OLD: "", HEIGHT_OLD: "", WIDE_OLD: "", AREA_OLD: "", DESE_OLD: "",
+};
+assert.equal(app.bulkRowHasDifferences("BMSWORK", workRecord), true);
+assert.equal(app.bulkFieldDiffers("BMSWORK", workRecord, "CONSNAME"), true);
+app.copyMappedValues(workRecord, app.COPY_CURRENT_TO_OLD.BMSWORK);
+assert.equal(app.bulkRowHasDifferences("BMSWORK", workRecord), false);
+assert.equal(workRecord.DESE_OLD, "虛構工作物");
+assert.equal(app.bulkValuesDiffer({ VALUE: "0", VALUE_OLD: "" }, "VALUE", "VALUE_OLD"), true, "Blank and zero must remain different");
+assert.deepEqual(Object.keys(app.BULK_COMPARISON_CONFIG), ["BMSLAN", "BMSSTAIR", "BMSWORK"]);
+app.state.bulkComparisonSide = "current";
+assert(app.bulkFieldNamesForTable("BMSLAN").includes("USE_CATEGORY_CODE2"));
+assert(!app.bulkFieldNamesForTable("BMSLAN").includes("DIST_OLD"));
+app.state.bulkComparisonSide = "old";
+assert(app.bulkFieldNamesForTable("BMSLAN").includes("DIST_OLD"));
+assert(!app.bulkFieldNamesForTable("BMSLAN").includes("DIST"));
+assert(app.bulkFieldNamesForTable("BMSLAN").includes("SPOKESMAN"), "Unpaired common bulk fields should remain available on both sides");
+app.state.bulkComparisonSide = "current";
+
 const districtField = app.fieldDefinition("BMSLAN", "DIST");
 const districtMarkup = app.renderField(districtField, { DIST: "436" }, "BMSLAN");
 assert.equal(app.useModalForOptions([["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"], ["5", "5"]]), false, "Five options should stay in a native select");
@@ -188,6 +306,13 @@ const bulkSpokesmanMarkup = app.renderBulkControl("BMSLAN", spokesmanField, { SP
 assert(bulkSpokesmanMarkup.includes('<select class="compact-option-select"'), "Bulk Y/N fields should also use a native select");
 assert(!bulkSpokesmanMarkup.includes("data-open-bulk-picker"));
 assert(app.renderInlineOptionMarkup([["A", "甲"]], "legacy").includes("目前值：legacy"), "Unknown existing values must remain selectable and exportable");
+const memoCodeField = app.fieldDefinition("BMSMEMO", "MEMO_SEQ");
+const memoCodeMarkup = app.renderField(memoCodeField, { MEMO_SEQ: "M111" }, "BMSMEMO");
+assert(memoCodeMarkup.includes('maxlength="4"'));
+assert(!memoCodeMarkup.includes("data-open-picker") && !memoCodeMarkup.includes("<select"), "Procedure/property codes must remain manually editable");
+assert.equal(memoCodeField.label, "程序、屬性代碼");
+assert.equal(app.fieldDefinition("BMSMEMO", "MEMO_SEQ_NAME").label, "程序、屬性名稱");
+assert.equal(app.fieldDefinition("BMSMEMO", "DESE").label, "備註內容");
 
 const expectedEditableCounts = { BM_TEC: 16, BMSSC: 52, BMSROAD: 11, BMSCHK: 29, BMSSCRP: 12, RPTPHOTO: 4, C21_3: 4, BMELVTR: 19 };
 for (const [table, count] of Object.entries(expectedEditableCounts)) {
@@ -236,6 +361,14 @@ app.state.tables = savedTables;
 
 assert.equal(app.TABLE_CONFIG.BMSLAN.sections.find((section) => section.copyCurrent)?.copyCurrent, "BMSLAN");
 assert.equal(app.TABLE_CONFIG.BMSSTAIR.sections.find((section) => section.copyCurrent)?.copyCurrent, "BMSSTAIR");
+assert.equal(app.TABLE_CONFIG.BMSWORK.sections.find((section) => section.copyCurrent)?.copyCurrent, "BMSWORK");
+for (const [table, pairs] of Object.entries(app.COPY_CURRENT_TO_OLD)) {
+  const names = new Set(app.allFields(table).map((field) => field.name));
+  for (const [sourceField, oldField] of pairs) {
+    assert(names.has(sourceField), `${table}.${sourceField} current-to-old source must exist`);
+    assert(names.has(oldField), `${table}.${oldField} current-to-old target must exist`);
+  }
+}
 assert.equal(app.bulkColumnClass(districtField), "bulk-col-code");
 assert.equal(app.bulkColumnClass(app.fieldDefinition("BMSSTAIR", "BUILDING_NO")), "bulk-col-text");
 assert.equal(app.bulkColumnClass(app.fieldDefinition("BMSSTAIR", "STORY_AREA")), "bulk-col-number");
@@ -248,19 +381,35 @@ assert(index.includes('id="formSetSwitcher"'), "The sidebar should contain the f
 assert(index.includes('id="formSetPlaceholder"') && index.includes('id="formSetCatalogBody"'), "Unavailable form sets should use the catalog placeholder page");
 assert(index.includes("此書表組尚未開放編輯。") && index.includes("data.txt 仍會完整輸出 13 表"));
 assert(index.includes('id="loadCaseJsonButton"') && index.includes('id="exportCaseJsonButton"') && index.includes('id="caseJsonFileInput"'));
+assert(index.includes("載入 data.txt／ZIP") && index.includes('accept=".txt,.zip'));
+assert(index.includes('id="exportDataTxtButton"') && index.includes('id="exportZipButton"'));
+assert(index.includes('id="fileDropOverlay"'), "The page must show a visible drop target while dragging a package");
 assert(index.includes('id="toggleSectionsButton"'), "Form sections should support one-click collapse/expand");
 assert(index.includes('id="toggleRawFieldsButton"'), "Raw field names should be opt-in");
 assert(index.includes('id="optionPickerRecent"'), "The option picker should expose recent selections");
 assert(index.includes('id="bulkToggleAllButton"'), "The bulk table should provide a select-all button");
+assert(index.includes('id="bulkComparisonToggleButton"') && index.includes('id="bulkCopyAllToOldButton"'), "Paired bulk tables should support view switching and one-click current-to-old copy");
+assert(index.includes("紅點表示與另一側不同"), "The bulk comparison legend should explain difference dots");
 assert(index.includes('id="clearCurrentTableButton"'), "Every active data page should expose a clear-page action");
 assert(index.includes('id="clearTableDialog"') && index.includes('id="confirmClearTableButton"'), "Clearing a page must require a custom warning modal");
+assert(index.includes('id="clearCaseDialog"') && index.includes('id="confirmClearCaseButton"'), "Clearing the full case must require a custom warning modal");
+assert(index.includes('id="templateButton"') && index.includes('id="templateDialog"'), "SQLite mode should expose shared-template management in the WebUI");
+assert(index.includes('id="tableAssistant"'), "The memo page should have a dedicated guided-entry area");
 assert(!index.includes('class="coverage-card"'), "The permanent coverage note should be removed from the sidebar");
 assert(styles.includes("body.show-raw .picker-code-input"), "Advanced raw-code mode should reveal the underlying code input");
 assert(styles.includes(".picker-option.keyboard-focus"), "Picker keyboard focus must be visible");
 assert(source.includes("function movePickerCursor"), "The option picker should support arrow-key navigation");
 assert(source.includes("function rememberPickerValue"), "The option picker should remember recent selections");
 assert(source.includes("function sectionStartsOpen"), "Field sections should preserve their collapse state");
+assert(source.includes("function addRegulatedMemoPreset") && source.includes("function renderTableAssistant"), "Regulated notes need a category/procedure/template workflow");
 assert(source.includes("function toggleAllBulkRows") && source.includes("function syncBulkSelectAllButton"), "Bulk select-all state should stay synchronized after individual checkbox changes");
+assert(source.includes("function refreshBulkDifferenceIndicators") && source.includes("function copyAllBulkCurrentValuesToOld"), "Bulk comparison differences and all-row copy must update live");
+assert(source.includes('"/api/import-zip"') && source.includes('"/api/export-zip"'), "ZIP import and replacement export APIs must be wired to the UI");
+const importDataSource = source.slice(source.indexOf("async function caseImportDataTxt"), source.indexOf("async function caseImportJson"));
+const importJsonSource = source.slice(source.indexOf("async function caseImportJson"), source.indexOf("function caseNewBlank"));
+assert(!importDataSource.includes("applyDefaultTemplates"), "data.txt and ZIP imports must overwrite without adding defaults");
+assert(!importJsonSource.includes("applyDefaultTemplates"), "Full-case JSON imports must overwrite without adding defaults");
+assert(source.includes("file-drag-active") && source.includes("loadDroppedCaseFile"), "data.txt and ZIP files must support drag-and-drop import");
 const fakeDialog = { getBoundingClientRect: () => ({ left: 100, right: 500, top: 80, bottom: 420 }) };
 assert.equal(app.isDialogBackdropClick(fakeDialog, { target: fakeDialog, clientX: 40, clientY: 200 }), true, "Clicking outside a modal should count as a backdrop click");
 assert.equal(app.isDialogBackdropClick(fakeDialog, { target: fakeDialog, clientX: 200, clientY: 200 }), false, "Clicking empty space inside the modal must not close it");
@@ -271,6 +420,8 @@ assert(styles.includes("overflow-y: scroll"), "The page should always reserve sp
 assert((styles.match(/scrollbar-gutter:\s*stable/g) || []).length >= 2, "Page and modal scroll containers should reserve stable scrollbar gutters");
 assert(styles.includes("min-width: 96px; width: 96px; max-width: 96px"), "Short bulk columns should be reduced to roughly two-thirds width");
 assert(styles.includes("grid-template-columns: minmax(54px, 1fr) 30px"), "Bulk code inputs and picker arrows should use the compact layout");
+assert(styles.includes(".bulk-select-wrap.has-difference::before") && styles.includes(".bulk-table td.bulk-cell-different::after"), "Row and cell differences should use red-dot indicators");
+assert(styles.includes(".nav-recommended-mark"), "Recommended data groups need a visible sidebar marker");
 assert(!styles.includes("min-width: 126px"), "The previous wide default bulk columns should be removed");
 assert(styles.includes(".form-set-switcher") && styles.includes('.form-set-button[aria-pressed="true"]'), "Form-set selection needs segmented styling and a non-color accessibility state");
 assert(styles.includes("@media (max-width: 920px)") && styles.includes(".form-set-switcher { display: flex; overflow-x: auto;"), "The form-set switcher should become horizontally scrollable at 920px");

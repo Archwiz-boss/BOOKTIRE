@@ -5,9 +5,13 @@
 # Local real-case data and legacy CPAMI program
 /data.txt
 /cpami/
+/test/
 
 # Local development tools
 /.tools/
+
+# Optional SQLite template runtime data
+/runtime/
 
 # Python runtime cache
 __pycache__/

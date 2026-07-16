@@ -1,13 +1,13 @@
 @echo off
 setlocal
-title CPAMI Form Editor
+title CPAMI Form Editor - SQLite Templates
 
 set "APP_DIR=%~dp0cpami-form-editor"
-set "APP_URL=http://127.0.0.1:8765"
+set "APP_URL=http://127.0.0.1:8766"
 set "LISTEN_HOST=0.0.0.0"
 
-if not exist "%APP_DIR%\server.py" (
-    echo ERROR: Cannot find cpami-form-editor\server.py.
+if not exist "%APP_DIR%\sqlite_server.py" (
+    echo ERROR: Cannot find cpami-form-editor\sqlite_server.py.
     echo Keep this BAT file in the BOOKTIRE project folder.
     pause
     exit /b 1
@@ -23,21 +23,21 @@ if errorlevel 1 (
 
 cd /d "%APP_DIR%"
 
-echo Starting CPAMI Form Editor...
+echo Starting CPAMI Form Editor with shared SQLite templates...
 echo Local URL: %APP_URL%
-echo Network listening address: %LISTEN_HOST%:8765
+echo Network listening address: %LISTEN_HOST%:8766
 echo Private LAN clients can connect without a token; public clients still require one.
-echo Windows Firewall and router port forwarding are not changed automatically.
+echo Full cases remain in each browser and are not stored in SQLite.
 echo Keep this window open while using the editor.
 echo Press Ctrl+C in this window to stop the server.
 echo.
 
 start "" /b cmd /c "ping 127.0.0.1 -n 2 ^>nul ^& start %APP_URL%"
-python -X utf8 server.py --host %LISTEN_HOST% --port 8765
+python -X utf8 sqlite_server.py --host %LISTEN_HOST% --port 8766
 
 if errorlevel 1 (
     echo.
-    echo The CPAMI Form Editor stopped with an error.
+    echo The CPAMI SQLite template server stopped with an error.
     pause
 )
 

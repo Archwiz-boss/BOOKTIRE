@@ -8,7 +8,7 @@
 
 ## 啟動
 
-最省事的是打包好的桌面版 `CPAMI書表編輯器.exe`（見
+最省事的是打包好的桌面版 `CPAMI-Editor.exe`（見
 [Releases](https://github.com/Archwiz-boss/BOOKTIRE/releases/latest)），
 雙擊即用、預設只綁 `127.0.0.1`、自動找可用連接埠並開啟瀏覽器。
 從原始碼跑同一個入口：

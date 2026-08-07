@@ -47,7 +47,7 @@
 ### 方式二：下載桌面版（推薦長期使用）
 
 👉 **[點這裡下載](https://github.com/Archwiz-boss/BOOKTIRE/releases/latest)**
-（在頁面的 Assets 區找 `CPAMI書表編輯器.exe`）
+（在頁面的 Assets 區找 `CPAMI-Editor.exe`）
 
 免安裝，**下載後雙擊就能用**，不需要安裝 Python 或任何東西。
 完全離線可用，適合公司內網或沒有網路的工作站。

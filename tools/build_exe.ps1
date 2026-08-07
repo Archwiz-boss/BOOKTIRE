@@ -3,7 +3,7 @@
     把 CPAMI 書表編輯器打包成單一個免安裝的 Windows 執行檔。
 
 .DESCRIPTION
-    產出 dist\CPAMI書表編輯器.exe。使用者不需要安裝 Python，
+    產出 dist\CPAMI-Editor.exe。使用者不需要安裝 Python，
     只要雙擊該檔就會啟動本機服務並自動開啟瀏覽器。
 
 .EXAMPLE
@@ -12,7 +12,7 @@
 [CmdletBinding()]
 param(
     [string]$Python = 'python',
-    [string]$Name = 'CPAMI書表編輯器',
+    [string]$Name = 'CPAMI-Editor',
     [switch]$KeepBuildFiles
 )
 

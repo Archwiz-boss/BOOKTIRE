@@ -27,6 +27,13 @@ if (-not (Test-Path (Join-Path $AppDir 'launcher.py'))) {
     throw "找不到 $AppDir\launcher.py，請確認腳本位於專案的 tools\ 目錄下。"
 }
 
+# GitHub 上傳 Release 資產時會把非 ASCII 字元從檔名移除（CPAMI書表編輯器.exe → CPAMI.exe），
+# 導致文件指示的檔名與實際資產對不上，重跑 workflow 還會因為撞名而失敗。
+# 檔名必須是純 ASCII，這裡先擋下來，不要等到發布才炸。
+if ($Name -notmatch '^[\x20-\x7E]+$') {
+    throw "執行檔名稱必須是純 ASCII（GitHub Release 會移除非 ASCII 字元）：'$Name'"
+}
+
 Write-Host '[1/4] 檢查 Python 與 PyInstaller…' -ForegroundColor Cyan
 & $Python --version
 & $Python -m PyInstaller --version 2>$null

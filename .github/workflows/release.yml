@@ -34,6 +34,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.exe
+          # 同名資產直接覆蓋。若不覆蓋，重跑同一個 tag 會以 already_exists 失敗。
+          overwrite_files: true
           generate_release_notes: true
           body: |
             ## 下載方式

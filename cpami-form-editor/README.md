@@ -14,10 +14,13 @@
 從原始碼跑同一個入口：
 
 ```powershell
-python -X utf8 .\launcher.py          # 只給本機用
-python -X utf8 .\launcher.py --lan    # 開放同一區域網路
-python -X utf8 .\launcher.py --sqlite # 共用範本模式
+python -X utf8 .\launcher.py             # 只給本機用，並啟用共用範本
+python -X utf8 .\launcher.py --lan       # 開放同一區域網路
+python -X utf8 .\launcher.py --no-sqlite # 不啟用共用範本，完全不寫入硬碟
 ```
+
+`launcher.py` 預設**啟用**共用範本（存到 `runtime/sqlite/`，只存使用者主動儲存的範本，
+不存完整案件）。所在目錄不可寫入時會印出警告並降級為不儲存模式，不會中斷啟動。
 
 另外有兩個彼此獨立的 BAT 啟動方式（沿用舊行為，預設對外監聽 `0.0.0.0`）：
 

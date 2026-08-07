@@ -47,7 +47,6 @@ import server as base  # noqa: E402  （必須在主控台編碼設定之後，�
 from app_paths import is_frozen, writable_root  # noqa: E402
 
 DEFAULT_PORT = 8765
-SQLITE_DEFAULT_PORT = 8766
 PORT_SCAN_LIMIT = 20
 LOCAL_ONLY_HOST = "127.0.0.1"
 LAN_HOST = "0.0.0.0"
@@ -80,7 +79,9 @@ def open_browser_later(url: str) -> None:
     threading.Thread(target=worker, daemon=True).start()
 
 
-def print_banner(url: str, host: str, port: int, token: str, sqlite_path: object) -> None:
+def print_banner(
+    url: str, host: str, port: int, token: str, sqlite_path: object, sqlite_warning: str
+) -> None:
     print("=" * 62)
     print("  CPAMI 建照書表資料編輯器")
     print("=" * 62)
@@ -101,8 +102,14 @@ def print_banner(url: str, host: str, port: int, token: str, sqlite_path: object
         print("  本服務沒有 HTTPS，請勿直接暴露到網際網路，優先走 VPN 或可信內網。")
     print()
     if sqlite_path is not None:
-        print(f"  共用範本資料庫：{sqlite_path}")
-        print("  （只存人員／單位等重複欄位的範本，不會存完整案件）")
+        print("  已啟用「常用資料範本」：起造人、建築師事務所、承造人等重複填寫的")
+        print("  欄位可以存起來重複使用，畫面上會出現「共用範本」按鈕。")
+        print(f"      {sqlite_path}")
+        print("  （只存你主動按儲存的範本，完整案件永遠不會寫進去。）")
+        print("  不想在硬碟留下任何東西，可改用 --no-sqlite 啟動。")
+        print()
+    elif sqlite_warning:
+        print(f"  ⚠ {sqlite_warning}")
         print()
     print("  ── 請注意 ──────────────────────────────────────────")
     print("  1. 使用期間請「不要關掉這個黑色視窗」，關掉服務就停了。")
@@ -115,7 +122,10 @@ def print_banner(url: str, host: str, port: int, token: str, sqlite_path: object
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="CPAMI 建照書表資料編輯器（雙擊啟動版）",
-        epilog="不加任何參數就是最常用的模式：只給本機使用，自動開瀏覽器。",
+        epilog=(
+            "不加任何參數就是最常用的模式：只給本機使用、自動開瀏覽器、"
+            "啟用常用資料範本。"
+        ),
     )
     parser.add_argument(
         "--lan",
@@ -126,24 +136,37 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=0, help=f"自行指定連接埠（預設 {DEFAULT_PORT}）。")
     parser.add_argument(
         "--sqlite",
-        action="store_true",
-        help="啟用共用範本模式，範本存到 exe 或專案旁的 runtime/sqlite/。",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="常用資料範本（預設啟用）。--no-sqlite 可關閉，關閉後完全不寫入硬碟。",
     )
     parser.add_argument("--no-browser", action="store_true", help="啟動後不要自動開瀏覽器。")
     parser.add_argument("--access-token", default="", help="外部連線權杖；未指定時每次啟動自動產生。")
     args = parser.parse_args()
 
     host = args.host or (LAN_HOST if args.lan else LOCAL_ONLY_HOST)
-    port = args.port or (SQLITE_DEFAULT_PORT if args.sqlite else DEFAULT_PORT)
+    port = args.port or DEFAULT_PORT
 
     template_store = None
     sqlite_path: object = None
+    sqlite_warning = ""
     if args.sqlite:
-        from sqlite_templates import SQLiteTemplateStore
+        # exe 可能被放在 Program Files、唯讀網路磁碟或光碟上。建不出資料庫時
+        # 只能降級成不儲存的模式，不可以讓整個編輯器開不起來。
+        try:
+            from sqlite_templates import SQLiteTemplateStore
 
-        database = writable_root() / "runtime" / "sqlite" / "cpami_templates.db"
-        template_store = SQLiteTemplateStore(database, base.SCHEMA["schemaVersion"])
-        sqlite_path = template_store.database_path
+            database = writable_root() / "runtime" / "sqlite" / "cpami_templates.db"
+            template_store = SQLiteTemplateStore(database, base.SCHEMA["schemaVersion"])
+            sqlite_path = template_store.database_path
+        except Exception as exc:  # noqa: BLE001 - 降級是刻意的，任何原因都不該中斷啟動
+            template_store = None
+            sqlite_path = None
+            sqlite_warning = (
+                f"無法在這個位置建立常用資料範本（{type(exc).__name__}: {exc}）。\n"
+                "    編輯器仍可正常使用，只是這次不會儲存範本。\n"
+                "    把程式複製到「文件」或桌面等可寫入的資料夾就能啟用。"
+            )
 
     server = build_server(host, port)
     actual_port = server.server_address[1]
@@ -154,7 +177,7 @@ def main() -> None:
         server.storage_mode = "sqlite-templates"  # type: ignore[attr-defined]
 
     url = f"http://{LOCAL_ONLY_HOST}:{actual_port}/"
-    print_banner(url, host, actual_port, token, sqlite_path)
+    print_banner(url, host, actual_port, token, sqlite_path, sqlite_warning)
     if not args.no_browser:
         open_browser_later(url)
 

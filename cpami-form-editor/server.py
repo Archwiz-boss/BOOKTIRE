@@ -4,35 +4,28 @@
 from __future__ import annotations
 
 import argparse
-import copy
-import io
 import ipaddress
 import json
 import secrets
-import shutil
 import socket
-import zipfile
 from email import policy
 from email.parser import BytesParser
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import cpami_core as core
+import web_api
+from app_paths import APP_ROOT
 from cpami_core import DataTxtError
+from web_api import MAX_BODY, decode_json_object
 
 
-APP_ROOT = Path(__file__).resolve().parent
 WEB_ROOT = APP_ROOT / "web"
 SCHEMA_PATH = APP_ROOT / "schema" / "data_txt_schema.json"
 DEFAULT_HOST = "0.0.0.0"
-MAX_BODY = 96 * 1024 * 1024
-MAX_ZIP_ENTRIES = 5000
-MAX_ZIP_UNCOMPRESSED = 512 * 1024 * 1024
-MAX_DATA_TXT = 16 * 1024 * 1024
 TRUSTED_CLIENT_NETWORKS = tuple(
     ipaddress.ip_network(cidr)
     for cidr in (
@@ -45,76 +38,7 @@ TRUSTED_CLIENT_NETWORKS = tuple(
 )
 
 
-def empty_case_tables(schema: dict[str, Any]) -> dict[str, list[dict[str, str]]]:
-    return {table: [] for table in schema["tableOrder"]}
-
-
 SCHEMA = core.load_schema(SCHEMA_PATH)
-
-
-def data_txt_zip_entry(archive: zipfile.ZipFile) -> zipfile.ZipInfo:
-    entries = archive.infolist()
-    if len(entries) > MAX_ZIP_ENTRIES:
-        raise DataTxtError(f"ZIP 檔案項目超過 {MAX_ZIP_ENTRIES:,} 筆，為避免異常展開已拒絕載入。")
-    if sum(entry.file_size for entry in entries) > MAX_ZIP_UNCOMPRESSED:
-        raise DataTxtError("ZIP 解壓縮後的總大小超過 512 MB。")
-    if any(entry.flag_bits & 0x1 for entry in entries):
-        raise DataTxtError("不支援加密的 ZIP 檔案。")
-    matches = [
-        entry
-        for entry in entries
-        if not entry.is_dir() and Path(entry.filename.replace("\\", "/")).name.lower() == "data.txt"
-    ]
-    if not matches:
-        raise DataTxtError("ZIP 內找不到 data.txt。")
-    if len(matches) > 1:
-        paths = "、".join(entry.filename for entry in matches[:5])
-        raise DataTxtError(f"ZIP 內有多個 data.txt，無法判斷應使用哪一個：{paths}")
-    if matches[0].file_size > MAX_DATA_TXT:
-        raise DataTxtError("ZIP 內的 data.txt 超過 16 MB。")
-    return matches[0]
-
-
-def import_zip_package(raw: bytes) -> tuple[bytes, dict[str, Any]]:
-    try:
-        with zipfile.ZipFile(io.BytesIO(raw), "r") as archive:
-            entry = data_txt_zip_entry(archive)
-            with archive.open(entry, "r") as source:
-                data_txt = source.read(MAX_DATA_TXT + 1)
-            if len(data_txt) > MAX_DATA_TXT:
-                raise DataTxtError("ZIP 內的 data.txt 超過 16 MB。")
-            return data_txt, {
-                "dataTxtPath": entry.filename,
-                "entryCount": len(archive.infolist()),
-            }
-    except (zipfile.BadZipFile, NotImplementedError, RuntimeError) as exc:
-        raise DataTxtError(f"ZIP 格式無法讀取：{exc}") from exc
-
-
-def replace_data_txt_in_zip(raw_zip: bytes, data_txt: bytes) -> tuple[bytes, str]:
-    output = io.BytesIO()
-    try:
-        with zipfile.ZipFile(io.BytesIO(raw_zip), "r") as source_archive:
-            target_entry = data_txt_zip_entry(source_archive)
-            if source_archive.read(target_entry) == data_txt:
-                return raw_zip, target_entry.filename
-            with zipfile.ZipFile(output, "w", allowZip64=True) as target_archive:
-                target_archive.comment = source_archive.comment
-                for entry in source_archive.infolist():
-                    if entry is target_entry:
-                        target_archive.writestr(entry, data_txt)
-                        continue
-                    if entry.is_dir():
-                        target_archive.writestr(entry, b"")
-                        continue
-                    # 舊二維匯入器會拒絕小檔案被標成 ZIP64（錯誤 517）。
-                    with source_archive.open(entry, "r") as source, target_archive.open(
-                        entry, "w"
-                    ) as target:
-                        shutil.copyfileobj(source, target, length=1024 * 1024)
-        return output.getvalue(), target_entry.filename
-    except (zipfile.BadZipFile, NotImplementedError, RuntimeError) as exc:
-        raise DataTxtError(f"ZIP 重新封裝失敗：{exc}") from exc
 
 
 def parse_multipart_parts(raw: bytes, content_type: str) -> dict[str, tuple[bytes, str]]:
@@ -131,25 +55,6 @@ def parse_multipart_parts(raw: bytes, content_type: str) -> dict[str, tuple[byte
         if name:
             parts[name] = (part.get_payload(decode=True) or b"", part.get_filename() or "")
     return parts
-
-
-def decode_json_object(raw: bytes) -> dict[str, Any]:
-    try:
-        value = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise DataTxtError("JSON 格式錯誤。") from exc
-    if not isinstance(value, dict):
-        raise DataTxtError("JSON 根節點必須是物件。")
-    return value
-
-
-def serialize_case_data_txt(payload: dict[str, Any]) -> tuple[bytes, dict[str, Any]]:
-    tables = core.parse_envelope(payload, SCHEMA)
-    prepared = core.prepare_payload({"tables": tables}, SCHEMA, fill_defaults=True)
-    validation = core.validate_tables(prepared, SCHEMA)
-    if validation["errors"]:
-        return b"", validation
-    return core.serialize_tables(prepared, SCHEMA), validation
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -260,27 +165,16 @@ class Handler(SimpleHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/bootstrap":
             store = getattr(self.server, "template_store", None)
-            data = {
-                "schemaVersion": SCHEMA["schemaVersion"],
-                "tableOrder": copy.deepcopy(SCHEMA["tableOrder"]),
-                "fieldOrder": copy.deepcopy(SCHEMA["fieldOrder"]),
-                "tableMeta": copy.deepcopy(SCHEMA["tableMeta"]),
-                "extraTableOrder": copy.deepcopy(SCHEMA.get("extraTableOrder", [])),
-                "extraFieldOrder": copy.deepcopy(SCHEMA.get("extraFieldOrder", {})),
-                "extraTableMeta": copy.deepcopy(SCHEMA.get("extraTableMeta", {})),
-                "tables": empty_case_tables(SCHEMA),
-                "extraTables": {
-                    table: [] for table in SCHEMA.get("extraTableOrder", [])
-                },
-                "initialCase": "blank",
-                "sampleLoaded": False,
-                "templateStorage": {
-                    "enabled": store is not None,
-                    "mode": getattr(self.server, "storage_mode", "none"),
-                    "kinds": store.kind_catalog() if store is not None else [],
-                },
-            }
-            self.send_json(data)
+            self.send_json(
+                web_api.bootstrap(
+                    SCHEMA,
+                    {
+                        "enabled": store is not None,
+                        "mode": getattr(self.server, "storage_mode", "none"),
+                        "kinds": store.kind_catalog() if store is not None else [],
+                    },
+                )
+            )
             return
         if path == "/api/health":
             self.send_json(
@@ -326,68 +220,23 @@ class Handler(SimpleHTTPRequestHandler):
                 return
 
             if path == "/api/import-data-txt":
-                parsed = core.parse_data_txt_bytes(self.read_body())
-                core.assert_parsed_matches_schema(parsed, SCHEMA)
-                prepared = core.prepare_payload(
-                    {"tables": parsed["tables"]}, SCHEMA, fill_defaults=False
-                )
-                self.send_json(
-                    {
-                        "tables": prepared,
-                        "extraTables": {
-                            table: [] for table in SCHEMA.get("extraTableOrder", [])
-                        },
-                        "validation": core.validate_tables(prepared, SCHEMA),
-                    }
-                )
+                self.send_json(web_api.import_data_txt(self.read_body(), SCHEMA))
                 return
 
             if path == "/api/import-zip":
-                data_txt, package = import_zip_package(self.read_body())
-                parsed = core.parse_data_txt_bytes(data_txt)
-                core.assert_parsed_matches_schema(parsed, SCHEMA)
-                prepared = core.prepare_payload(
-                    {"tables": parsed["tables"]}, SCHEMA, fill_defaults=False
-                )
-                self.send_json(
-                    {
-                        "tables": prepared,
-                        "extraTables": {
-                            table: [] for table in SCHEMA.get("extraTableOrder", [])
-                        },
-                        "validation": core.validate_tables(prepared, SCHEMA),
-                        "package": package,
-                    }
-                )
+                self.send_json(web_api.import_zip(self.read_body(), SCHEMA))
                 return
 
             if path == "/api/import-case-json":
-                envelope = core.prepare_case_envelope(
-                    self.read_json(),
-                    SCHEMA,
-                    fill_defaults=False,
-                    allow_data_txt_unsafe=True,
-                )
-                self.send_json(
-                    {
-                        **envelope,
-                        "validation": core.validate_case_envelope(envelope, SCHEMA),
-                    }
-                )
+                self.send_json(web_api.import_case_json(self.read_json(), SCHEMA))
                 return
 
             if path == "/api/validate":
-                envelope = core.prepare_case_envelope(
-                    self.read_json(),
-                    SCHEMA,
-                    fill_defaults=False,
-                    allow_data_txt_unsafe=True,
-                )
-                self.send_json(core.validate_case_envelope(envelope, SCHEMA))
+                self.send_json(web_api.validate(self.read_json(), SCHEMA))
                 return
 
             if path == "/api/export":
-                raw, validation = serialize_case_data_txt(self.read_json())
+                raw, validation = web_api.export_data_txt(self.read_json(), SCHEMA)
                 if validation["errors"]:
                     self.send_json(validation, status=HTTPStatus.UNPROCESSABLE_ENTITY)
                     return
@@ -407,13 +256,12 @@ class Handler(SimpleHTTPRequestHandler):
                 )
                 if "case" not in parts or "archive" not in parts:
                     raise DataTxtError("ZIP 匯出請求缺少案件資料或原始 ZIP。")
-                data_txt, validation = serialize_case_data_txt(
-                    decode_json_object(parts["case"][0])
+                raw, validation, _data_txt_path = web_api.export_zip(
+                    decode_json_object(parts["case"][0]), parts["archive"][0], SCHEMA
                 )
                 if validation["errors"]:
                     self.send_json(validation, status=HTTPStatus.UNPROCESSABLE_ENTITY)
                     return
-                raw, _data_txt_path = replace_data_txt_in_zip(parts["archive"][0], data_txt)
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Type", "application/zip")
                 self.send_header("Content-Length", str(len(raw)))

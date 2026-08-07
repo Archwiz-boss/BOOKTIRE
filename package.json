@@ -1,0 +1,16 @@
+{
+  "name": "booktire-cpami-form-editor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "測試用途專用。編輯器本身（web/app.js）與本機服務（server.py）都沒有任何 npm 或 pip 執行期相依；這裡只有跑線上試用版回歸測試所需要的 Pyodide。",
+  "license": "MIT",
+  "scripts": {
+    "test": "node cpami-form-editor/tests/frontend_smoke_test.js && node cpami-form-editor/tests/demo_pyodide_test.mjs",
+    "test:frontend": "node cpami-form-editor/tests/frontend_smoke_test.js",
+    "test:demo": "node cpami-form-editor/tests/demo_pyodide_test.mjs",
+    "build:demo": "python -X utf8 tools/build_demo.py"
+  },
+  "devDependencies": {
+    "pyodide": "^314.0.3"
+  }
+}

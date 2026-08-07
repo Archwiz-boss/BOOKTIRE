@@ -1,0 +1,47 @@
+name: 建置並發布桌面版 exe
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # build_exe.ps1 會自己安裝 PyInstaller、先跑回歸測試，
+      # 打包後再啟動產出的 exe 打 /api/health 驗證。
+      - name: 建置執行檔
+        shell: pwsh
+        run: ./tools/build_exe.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CPAMI-Editor-exe
+          path: dist/*.exe
+
+      - name: 發布 Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe
+          generate_release_notes: true
+          body: |
+            ## 下載方式
+
+            在下方 **Assets** 點 `CPAMI書表編輯器.exe` 下載，**免安裝，雙擊即用**。
+
+            第一次執行 Windows 可能會跳出藍色警告（因為程式沒有購買數位簽章）：
+            點「其他資訊」→「仍要執行」即可。
+
+            📖 [使用手冊](https://github.com/Archwiz-boss/BOOKTIRE/blob/main/docs/使用手冊.md)
+            ｜ 🌐 [線上試用版](https://archwiz-boss.github.io/BOOKTIRE/)

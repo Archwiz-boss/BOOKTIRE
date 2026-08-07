@@ -1,0 +1,21 @@
+# 預設讓 git 自行判斷文字檔換行。
+* text=auto
+
+# ── 絕對不可被 git 正規化的檔案 ───────────────────────────────────
+# data.txt 系列是 CP950／Big5 編碼、CRLF 換行的固定格式檔，
+# 換行字元與位元組內容「就是格式契約本身」。
+# 若讓 git 把 CRLF 正規化成 LF，在 Linux／macOS 上 clone 出來的 fixture
+# 會不再是合法的 data.txt，位元組級 roundtrip 測試（本專案最高驗收標準）
+# 會直接失敗，也會產生舊系統拒收的檔案。
+cpami-form-editor/tests/fixtures/** -text
+data.txt -text
+*.mdb binary
+
+# Windows PowerShell 5.1 以系統 ANSI 編碼讀取 .ps1，沒有 BOM 的中文會變亂碼
+# 並造成語法錯誤，因此這些腳本必須保持 CRLF 與 UTF-8 BOM。
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+
+# 讓 GitHub 的語言統計忽略萃取出來的代碼資料，不要把它算成手寫程式碼。
+cpami-form-editor/web/codebook.json linguist-generated=true
+cpami-form-editor/reference/*.csv linguist-generated=true

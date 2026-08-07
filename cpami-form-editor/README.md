@@ -2,9 +2,24 @@
 
 這是不依賴雲端服務的前端。13 表、596 欄及欄位順序由不含案件內容的 `schema/data_txt_schema.json` 定義；B／C／D 系列的道路、勘驗、逐月材料、附件、變更使用檢討與昇降設備由 `schema/case_extension_schema.json` 定義。瀏覽器負責編輯與來源資料對接，Python 服務負責嚴格解析並輸出 CP950／Big5。
 
+> 本檔是**開發者向**的功能與細節說明。
+> 一般使用者請看 [`../README.md`](../README.md) 與 [`../docs/使用手冊.md`](../docs/使用手冊.md)；
+> 要二次開發請看 [`../docs/開發指南.md`](../docs/開發指南.md)。
+
 ## 啟動
 
-有兩個彼此獨立的啟動方式：
+最省事的是打包好的桌面版 `CPAMI書表編輯器.exe`（見
+[Releases](https://github.com/Archwiz-boss/BOOKTIRE/releases/latest)），
+雙擊即用、預設只綁 `127.0.0.1`、自動找可用連接埠並開啟瀏覽器。
+從原始碼跑同一個入口：
+
+```powershell
+python -X utf8 .\launcher.py          # 只給本機用
+python -X utf8 .\launcher.py --lan    # 開放同一區域網路
+python -X utf8 .\launcher.py --sqlite # 共用範本模式
+```
+
+另外有兩個彼此獨立的 BAT 啟動方式（沿用舊行為，預設對外監聽 `0.0.0.0`）：
 
 - `Start_CPAMI_Editor.bat`：原本的無資料庫模式，使用 `0.0.0.0:8765`。
 - `Start_CPAMI_Editor_SQLite.bat`：共用範本模式，使用 `0.0.0.0:8766`；只把範本存到 `runtime/sqlite/cpami_templates.db`，不保存完整案件。
@@ -14,7 +29,7 @@
 也可以在 PowerShell 手動執行：
 
 ```powershell
-cd C:\Users\chuck\Desktop\CLAUDE\BOOKTIRE\cpami-form-editor
+cd <專案資料夾>\BOOKTIRE\cpami-form-editor
 python -X utf8 .\server.py
 ```
 
@@ -221,6 +236,8 @@ python -X utf8 .\tests\pg_tools_test.py
 python -X utf8 .\tests\sqlite_template_test.py
 python -X utf8 .\tests\network_access_test.py
 python -X utf8 .\tests\server_roundtrip_test.py
+# 線上試用版（Pyodide）；需先在專案根目錄執行 npm install
+node .\tests\demo_pyodide_test.mjs
 ```
 
 ## 注意

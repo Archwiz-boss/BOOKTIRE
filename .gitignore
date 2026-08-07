@@ -13,6 +13,17 @@
 # Optional SQLite template runtime data
 /runtime/
 
+# Build output: the .exe ships as a GitHub Release asset, not in the repo
+/dist/
+/build/
+*.spec
+
+# Generated GitHub Pages demo (rebuild with tools/build_demo.py)
+/_site/
+
+# Test-only dependencies (see package.json)
+/node_modules/
+
 # Python runtime cache
 __pycache__/
 *.py[cod]

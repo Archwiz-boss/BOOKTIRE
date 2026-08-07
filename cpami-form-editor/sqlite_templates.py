@@ -11,11 +11,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
+from app_paths import PROJECT_ROOT
 from cpami_core import DataTxtError
 
 
-APP_ROOT = Path(__file__).resolve().parent
-DEFAULT_SCHEMA_PATH = APP_ROOT.parent / "sqlite" / "schema.sql"
+DEFAULT_SCHEMA_PATH = PROJECT_ROOT / "sqlite" / "schema.sql"
 TEMPLATE_VERSION = "1"
 
 TEMPLATE_KINDS: dict[str, dict[str, Any]] = {

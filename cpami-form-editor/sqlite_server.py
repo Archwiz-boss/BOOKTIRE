@@ -9,10 +9,11 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import server as base
+from app_paths import writable_root
 from sqlite_templates import SQLiteTemplateStore
 
 
-DEFAULT_DATABASE = base.APP_ROOT.parent / "runtime" / "sqlite" / "cpami_templates.db"
+DEFAULT_DATABASE = writable_root() / "runtime" / "sqlite" / "cpami_templates.db"
 
 
 def main() -> None:

@@ -7,21 +7,35 @@
 
 以瀏覽器編輯內政部營建署（CPAMI）建照電子申請舊系統的 `data.txt`（CP950／Big5、13 表、596 欄、固定欄序）。一份 `data.txt` 就是**一個案件**；A（建照申請）、B（施工管理）、C（使用管理）、D（拆除）等「書表組」是同一案件資料的不同檢視，不是不同案件。
 
+本專案已以 **MIT 授權公開**（<https://github.com/Archwiz-boss/BOOKTIRE>）。對外文件見
+`README.md`（使用者）、`docs/使用手冊.md`（白話操作）、`docs/開發指南.md`（二次開發）、
+`AGENTS.md`（AI 代理進場）、`NOTICE.md`（第三方資料來源）。
+
 | 路徑 | 角色 |
 |---|---|
 | `cpami-form-editor/web/`（index.html、app.js、styles.css、codebook.json） | 前端。vanilla JS，無框架、無 npm 依賴、無建置步驟 |
-| `cpami-form-editor/server.py` | 本機伺服器。只用 Python 標準庫，須可在離線 Windows 工作站執行 |
-| `cpami-form-editor/tests/` | node 煙霧測試＋伺服器 roundtrip 測試 |
+| `cpami-form-editor/cpami_core.py` | 格式引擎：CP950 解析、驗證、序列化。唯一真實來源 |
+| `cpami-form-editor/web_api.py` | 各 API 操作的實作。**不得引入任何 HTTP／伺服器／瀏覽器相依**，因為桌面版與 Pyodide 試用版共用它 |
+| `cpami-form-editor/server.py` | 本機伺服器，只做傳輸／授權／靜態檔。只用 Python 標準庫，須可在離線 Windows 工作站執行 |
+| `cpami-form-editor/launcher.py` | 雙擊啟動器（exe 入口）：預設只綁 127.0.0.1、自動找可用埠、自動開瀏覽器 |
+| `cpami-form-editor/app_paths.py` | 原始碼執行與 PyInstaller 凍結後的資源／可寫入路徑差異 |
+| `cpami-form-editor/tests/` | node 煙霧測試＋伺服器 roundtrip＋Pyodide 試用版測試 |
 | `cpami-form-editor/schema/` | `data_txt_schema.json` 定義 13 表；`case_extension_schema.json` 定義完整案件 JSON 的 13 表外資料 |
 | `cpami-form-editor/tools/export_codebook.ps1` | 從舊系統 MDB 重新產生 codebook.json（32 位元 PowerShell） |
+| `web-demo/` | 線上試用版的載入畫面與 fetch 轉接層（Pyodide） |
+| `tools/build_exe.ps1`、`tools/build_demo.py` | 打包 Windows exe；組裝 GitHub Pages 靜態站 |
 | `cpami/Arch2016C/` | 舊系統原程式（fr3 報表模板、bldcode.mdb、Build.mdb）。**唯讀參考，禁止修改，不入版控** |
 | 根目錄 `data.txt` | 目前工作案件。**含真實個資，絕不入版控** |
 | `CPAMI_data_txt_欄位與代碼對應表.md`、`CPAMI_指定書表_實用數據對應表.md` | 欄位與代碼語意的依據文件（ground truth） |
-| `docs/` | 規劃文件與 Codex 工作指令 |
+| `docs/` | 對外文件、規劃文件與 Codex 工作指令 |
+
+> `cpami/` 與根目錄 `data.txt` **不在公開版控庫內**；clone 下來不會有。
+> 需要查證 `.fr3` 或 MDB 而手上沒有時，直接說明缺件，不要推測。
 
 分層鐵則：
 
-- **格式知識只住在伺服器端**（`server.py`，未來抽為 `cpami_core.py`）：CP950 解析、驗證、序列化。前端永遠只碰 JSON 與 UTF-8，不做任何編碼工作。
+- **格式知識只住在 `cpami_core.py`**：CP950 解析、驗證、序列化。前端永遠只碰 JSON 與 UTF-8，不做任何編碼工作。
+- **`web_api.py` 是桌面版與線上試用版的共用實作**：格式規則只有一份，`server.py` 與 `web-demo/demo-adapter.js` 都只是它的外殼。往 `web_api.py` 加傳輸層相依會直接讓試用版失效。
 - **代碼唯一來源是 `web/codebook.json`**（22,383 筆舊系統代碼＋1,626 筆臺中市官方地段，43 種 CODE_TYPE，另含從 `Build.mdb` 唯讀萃取的臺中規定備註、新版適用法令與常用文字）。只能用 `export_codebook.ps1` 重新產生，不得手改內容；`app.js` 的 `CODE_OPTIONS` 僅作缺漏備援。
 - **書表目錄的唯一來源是 codebook 的 `ALLRPT`**（109 筆）。code 欄的分組：`A` 建照申請 22、`B` 施工管理 14（含 B13-2-2）、`C` 使用管理 13、`D` 拆除執照 3、`E` 室內裝修 9、`F` 技師簽證報告 1（mark 為 BM_TEC）、`G` B14 施工勘驗系列 5、`H` 農舍管制註記清冊 2，其餘為縣市附表（I30、I40、I80 等）。新增書表組時從這裡取清單，不要手抄畫面截圖。
 - 一般模式 `server.py` 禁止引入資料庫依賴；只有使用獨立 `sqlite_server.py`／`Start_CPAMI_Editor_SQLite.bat` 時，才允許以 Python 標準庫 SQLite 保存共用範本。SQLite 不得保存完整案件，執行期檔案只放在已忽略版控的 `runtime/`。PostgreSQL 案件整合仍只放在 `db/` 與 `tools/`（見 `docs/POSTGRES_INTEGRATION_PLAN.md`）。
@@ -85,6 +99,7 @@
 - `python -X utf8 .\tests\sqlite_template_test.py` — SQLite 範本 allowlist、預設唯一性、生命週期與 HTTP API；改範本功能必跑。
 - 先啟動 `python -X utf8 .\server.py`，再跑 `python -X utf8 .\tests\server_roundtrip_test.py` — 含位元組級 roundtrip，改伺服器或匯出邏輯必跑。
 - `tests/network_access_test.py` — 權杖／回環驗證，改連線與授權邏輯時跑。
+- `node ./tests/demo_pyodide_test.mjs` — 線上試用版在 Pyodide 裡的位元組級 roundtrip；改 `cpami_core.py`、`web_api.py` 或 `web-demo/demo-adapter.js` 時跑（需先 `npm install`，pyodide 是唯一的測試相依）。
 
 規則：改了行為就同步改測試斷言；測試主體只使用版控內的虛構 fixture，不得依賴真實個資。根目錄真實 `data.txt` 的 roundtrip 只在檔案存在時作本機附加驗證。
 
@@ -97,7 +112,8 @@
 
 ## 8. 文件維護規則
 
-- 原則變更只改本檔；`AGENTS.md` 永遠只是指標。
+- 原則變更只改本檔；`AGENTS.md` 是給 AI 代理的進場指引，只做導引與摘要，不累積新規則。
+- 對外文件分工：`README.md` 給使用者（白話、少技術用語）、`docs/使用手冊.md` 給操作者、`docs/開發指南.md` 給二次開發者、`NOTICE.md` 記第三方資料來源。改動影響到使用方式時要同步。
 - 功能現況記在 `cpami-form-editor/README.md`（「已完成的功能」段落），完成新功能要同步。
 - 完成 `docs/CODEX_PROMPTS.md` 的工項後，在該檔勾銷對應項目並記錄日期。
 - 欄位／代碼的新查證結果寫回根目錄兩份對應表文件，不要散落在程式註解。

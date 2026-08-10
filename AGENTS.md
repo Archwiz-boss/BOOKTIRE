@@ -161,6 +161,7 @@ python -X utf8 ./tests/core_unit_test.py
 | `cpami-form-editor/tools/diagnose_data_txt.py` | 診斷載不進來的 `data.txt`／ZIP（編碼、造字、行號、病因） |
 | `web-demo/demo-adapter.js` | 試用版 fetch 轉接層（含送進瀏覽器的 Python） |
 | `tools/build_exe.ps1` | 打包 Windows 執行檔 |
+| `tools/Test-PortableExe.ps1` | 打包後的格式行為驗收（發佈前必跑） |
 | `tools/build_demo.py` | 組裝 GitHub Pages 靜態站 |
 | `CPAMI_*.md`（根目錄 5 份） | 欄位與代碼語意的 ground truth |
 

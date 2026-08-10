@@ -25,6 +25,7 @@
 | `cpami-form-editor/tools/diagnose_data_txt.py` | 診斷 `data.txt`／ZIP 為何載不進來：編碼判定、造字清點、控制字元、行號與病因。輸出含個資，只在本機看 |
 | `web-demo/` | 線上試用版的載入畫面與 fetch 轉接層（Pyodide） |
 | `tools/build_exe.ps1`、`tools/build_demo.py` | 打包 Windows exe；組裝 GitHub Pages 靜態站 |
+| `tools/Test-PortableExe.ps1` | 打包後的格式行為驗收：在清掉 Python 環境變數的情況下啟動 exe，驗位元組級 roundtrip、ZIP 附件不受影響、`--no-sqlite` 不寫硬碟、範本 CRUD 與 `runtime/` 重建。發佈前必跑；`-UseSource` 可改對原始碼跑但不能取代 exe 驗收 |
 | `cpami/Arch2016C/` | 舊系統原程式（fr3 報表模板、bldcode.mdb、Build.mdb）。**唯讀參考，禁止修改，不入版控** |
 | 根目錄 `data.txt` | 目前工作案件。**含真實個資，絕不入版控** |
 | `CPAMI_data_txt_欄位與代碼對應表.md`、`CPAMI_指定書表_實用數據對應表.md` | 欄位與代碼語意的依據文件（ground truth） |

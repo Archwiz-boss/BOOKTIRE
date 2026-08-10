@@ -90,10 +90,17 @@ python -X utf8 ./tests/core_unit_test.py
 
 ### 3.1 格式（違反即產出廢檔，舊系統會拒收）
 
-1. **13 表全保留**、順序一致、合計 **596 欄**，欄序固定。
+1. **表的集合與順序以原檔為準**，不以模板為準：不補原檔沒有的表，
+   也不丟原檔多出的表（`passthroughTables` 唯讀保留）。
+   **13 表 596 欄只是新建空白案件的模板。** 模板與原檔都有的表，
+   欄位集合與順序必須完全一致——那才是欄序契約。
 2. 編碼 **CP950／Big5、無 BOM**、**CRLF** 換行、檔尾保留 CRLF。
+   基準是 **Windows 版 CP950**，一律用 `cpami_core.py` 的
+   `decode_cp950`／`encode_cp950`，**禁止直接寫 `raw.decode("cp950")`**
+   （Python 內建 codec 拒絕 Big5 造字區，真實案件會整份載不進來）。
 3. 無法以 CP950 表示的字元**必須報錯**，**不可默默變 `?`**。
-4. 值內**禁止**半形雙引號與實體換行。
+4. 值內**禁止**半形雙引號；**換行不在禁止之列**（memo 欄位本來就會多行）。
+   切行只能認 `\r\n`／`\r`／`\n`，**禁止用 `str.splitlines()`**。
 5. 空值是 `""`，**不可**改成 `"0"`。所有值都是字串，
    前導零與「空白 vs 0」的差異必須保真。
 6. 欄名（含 `person_seq`、`eMail` 等大小寫不一致者）是舊系統契約，
@@ -150,11 +157,12 @@ python -X utf8 ./tests/core_unit_test.py
 | `cpami-form-editor/server.py` | 本機 HTTP 服務 |
 | `cpami-form-editor/launcher.py` | 雙擊啟動器（exe 入口） |
 | `cpami-form-editor/app_paths.py` | 原始碼／凍結後的路徑差異 |
-| `cpami-form-editor/schema/*.json` | 13 表 596 欄定義＋擴充資料定義 |
+| `cpami-form-editor/schema/*.json` | 欄序契約＋新建案件的 13 表 596 欄模板＋擴充資料定義 |
+| `cpami-form-editor/tools/diagnose_data_txt.py` | 診斷載不進來的 `data.txt`／ZIP（編碼、造字、行號、病因） |
 | `web-demo/demo-adapter.js` | 試用版 fetch 轉接層（含送進瀏覽器的 Python） |
 | `tools/build_exe.ps1` | 打包 Windows 執行檔 |
 | `tools/build_demo.py` | 組裝 GitHub Pages 靜態站 |
-| `CPAMI_*.md`（根目錄 4 份） | 欄位與代碼語意的 ground truth |
+| `CPAMI_*.md`（根目錄 5 份） | 欄位與代碼語意的 ground truth |
 
 ### 這個版控庫裡**沒有**的東西（需要就得自備）
 
@@ -170,7 +178,7 @@ python -X utf8 ./tests/core_unit_test.py
 
 | 任務 | 正確做法 | 常見錯誤 |
 |---|---|---|
-| 加欄位 | 先確認它在 `data_txt_schema.json` 的欄序內；不在就放 `case_extension_schema.json` | 直接往 13 表硬加 → 破壞 596 欄契約 |
+| 加欄位 | 先確認它在 `data_txt_schema.json` 的欄序內；不在就放 `case_extension_schema.json` | 直接往既有表硬加 → 破壞欄序契約 |
 | 改代碼選項 | 用 `tools/export_codebook.ps1` 重新產生 | 手改 `codebook.json` |
 | 新增書表組 | 先產出對應表研究文件，清單取自 `ALLRPT` | 照畫面截圖手抄 |
 | 改 UI | 用 `styles.css` 既有 CSS 變數 | 引入新的裸色碼 |

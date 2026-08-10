@@ -5,7 +5,7 @@
 
 ## 1. 專案定位與架構
 
-以瀏覽器編輯內政部營建署（CPAMI）建照電子申請舊系統的 `data.txt`（CP950／Big5、13 表、596 欄、固定欄序）。一份 `data.txt` 就是**一個案件**；A（建照申請）、B（施工管理）、C（使用管理）、D（拆除）等「書表組」是同一案件資料的不同檢視，不是不同案件。
+以瀏覽器編輯內政部營建署（CPAMI）建照電子申請舊系統的 `data.txt`（CP950／Big5、固定欄序；表的集合依案件內容而定，新建案件用的模板是 13 表 596 欄，詳見 §2 第 1 條）。一份 `data.txt` 就是**一個案件**；A（建照申請）、B（施工管理）、C（使用管理）、D（拆除）等「書表組」是同一案件資料的不同檢視，不是不同案件。
 
 本專案已以 **MIT 授權公開**（<https://github.com/Archwiz-boss/BOOKTIRE>）。對外文件見
 `README.md`（使用者）、`docs/使用手冊.md`（白話操作）、`docs/開發指南.md`（二次開發）、
@@ -20,13 +20,15 @@
 | `cpami-form-editor/launcher.py` | 雙擊啟動器（exe 入口）：預設只綁 127.0.0.1、自動找可用埠、自動開瀏覽器 |
 | `cpami-form-editor/app_paths.py` | 原始碼執行與 PyInstaller 凍結後的資源／可寫入路徑差異 |
 | `cpami-form-editor/tests/` | node 煙霧測試＋伺服器 roundtrip＋Pyodide 試用版測試 |
-| `cpami-form-editor/schema/` | `data_txt_schema.json` 定義 13 表；`case_extension_schema.json` 定義完整案件 JSON 的 13 表外資料 |
+| `cpami-form-editor/schema/` | `data_txt_schema.json` 定義欄序契約與新建案件的 13 表模板；`case_extension_schema.json` 定義完整案件 JSON 在 data.txt 各表之外的資料 |
 | `cpami-form-editor/tools/export_codebook.ps1` | 從舊系統 MDB 重新產生 codebook.json（32 位元 PowerShell） |
+| `cpami-form-editor/tools/diagnose_data_txt.py` | 診斷 `data.txt`／ZIP 為何載不進來：編碼判定、造字清點、控制字元、行號與病因。輸出含個資，只在本機看 |
 | `web-demo/` | 線上試用版的載入畫面與 fetch 轉接層（Pyodide） |
 | `tools/build_exe.ps1`、`tools/build_demo.py` | 打包 Windows exe；組裝 GitHub Pages 靜態站 |
 | `cpami/Arch2016C/` | 舊系統原程式（fr3 報表模板、bldcode.mdb、Build.mdb）。**唯讀參考，禁止修改，不入版控** |
 | 根目錄 `data.txt` | 目前工作案件。**含真實個資，絕不入版控** |
 | `CPAMI_data_txt_欄位與代碼對應表.md`、`CPAMI_指定書表_實用數據對應表.md` | 欄位與代碼語意的依據文件（ground truth） |
+| `CPAMI_二維封包擴充表_數據對應表.md` | 二維封包多帶的表（`BDMLIST`、`BDMSIGN` 等）：匯出機制、未建模表的鍵值與欄位研判、待查缺口 |
 | `docs/` | 對外文件、規劃文件與 Codex 工作指令 |
 
 > `cpami/` 與根目錄 `data.txt` **不在公開版控庫內**；clone 下來不會有。
@@ -65,7 +67,7 @@
    另外，切行只能認 `\r\n`／`\r`／`\n`（`_logical_lines`）——**禁止用 `str.splitlines()`**，
    它還會在 `\x0b`、`\x0c`、`\x1c`–`\x1e` 斷行，而那些字元是 memo 欄位的資料。
 5. 空值是 `""`；不可擅改為 `"0"`。所有值一律是字串——前導零（如 `LAST_MODIFY` 的 `00001`）與「空白 vs 0」的差異都必須保真。
-6. `INDEX_KEY` 全 13 表一致；子表 `person_seq`／`PERSON_SEQ`／`Person_seq` 為正整數且同表不重複。
+6. `INDEX_KEY` 全表一致；子表 `person_seq`／`PERSON_SEQ`／`Person_seq` 為正整數且同表不重複。
 7. 數字欄純數字（不含單位、千分位）；日期多為民國 `yyyMMdd` 7 碼。
 8. **位元組級 roundtrip 是最高驗收標準**：載入一份合法 data.txt 不經修改直接匯出，必須逐位元組相同（`tests/server_roundtrip_test.py` 驗證）。
 9. 欄名（含 `person_seq`、`eMail` 等大小寫不一致者）是舊系統契約，禁止「訂正」拼寫或大小寫。

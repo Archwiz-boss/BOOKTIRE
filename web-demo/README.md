@@ -42,8 +42,9 @@ node cpami-form-editor/tests/demo_pyodide_test.mjs
 ```
 
 這個測試會把 `demo-adapter.js` 裡真正送進瀏覽器的那段 Python（`PY_SETUP`）
-抽出來實跑，確認 13 表 596 欄、`data.txt` 與 ZIP 的位元組級 roundtrip，
-以及錯誤狀態碼都與桌面版一致。
+抽出來實跑，確認 `data.txt` 與 ZIP 的位元組級 roundtrip、Big5 造字在 Pyodide 裡
+一樣讀得回也寫得回（瀏覽器內建的 `cp950` codec 同樣不認得造字區）、
+表的集合以原檔版面為準（增減表後仍原序寫回），以及錯誤狀態碼都與桌面版一致。
 
 ## 隱私
 

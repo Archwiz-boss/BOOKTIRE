@@ -96,6 +96,69 @@ assert(exported.status === 200, `匯出應回 200，實得 ${exported.status}`);
 assert(exported.raw.length === fixture.length, `長度不符：${exported.raw.length} vs ${fixture.length}`);
 assert(Buffer.compare(Buffer.from(exported.raw), Buffer.from(fixture)) === 0, "匯出結果必須與原檔逐位元組相同");
 
+// 2b) 舊系統的 Big5 造字：Pyodide 的 cp950 codec 一樣不認得，相容層必須在瀏覽器裡
+//     也生效，否則含罕用字姓名的真實案件在試用版仍舊載不進來。
+const eudcFixture = Buffer.from(fixture);
+const ownerAt = eudcFixture.indexOf(Buffer.from([0xa4, 0xfd, 0xbd, 0x64, 0xa8, 0xd2]));
+assert(ownerAt !== -1, "fixture 內找不到用來塞造字的姓名欄位");
+eudcFixture[ownerAt + 4] = 0xfa; // 造字區一的第一個字
+eudcFixture[ownerAt + 5] = 0x40;
+const eudcImported = call("/api/import-data-txt", { bytes: new Uint8Array(eudcFixture) });
+assert(eudcImported.status === 200, `含造字的 data.txt 應可匯入，實得 ${eudcImported.status}`);
+assert(
+  eudcImported.json.validation.warnings.some((warning) => warning.includes("造字")),
+  "含造字時應提醒使用者",
+);
+const eudcExported = call("/api/export", {
+  text: JSON.stringify({ tables: eudcImported.json.tables }),
+});
+assert(
+  Buffer.compare(Buffer.from(eudcExported.raw), eudcFixture) === 0,
+  "造字必須原樣寫回，匯出結果要與原檔逐位元組相同",
+);
+
+// 2c) 表集合與模板不同的真實封包：少 3 張模板表、多 1 張沒建模的表。匯出必須還原
+//     原檔的表集合與順序，未建模的表一筆都不能掉。
+py.globals.set("_fixture_bytes", fixture);
+const variantSource = py.runPython(`
+import sys
+sys.path.insert(0, "/app")
+import cpami_core as core
+schema = core.load_schema("/app/schema/data_txt_schema.json")
+parsed = core.parse_data_txt_bytes(bytes(_fixture_bytes.to_py()))
+layout = core.document_layout(parsed)
+layout["tableOrder"] = [t for t in layout["tableOrder"] if t not in {"BMSP03", "BMSP04", "BMSSC"}]
+layout["tableOrder"].insert(1, "BDMSIGN")
+layout["fieldOrder"]["BDMSIGN"] = ["INDEX_KEY", "SIGNSEQ", "SIGNINFO"]
+key = parsed["tables"]["BMSBASE"][0]["INDEX_KEY"]
+core.serialize_tables(parsed["tables"], schema, layout=layout, passthrough={
+    "BDMSIGN": [{"INDEX_KEY": key, "SIGNSEQ": "1", "SIGNINFO": "範例電子簽章"}],
+})
+`).toJs().slice();
+
+const variant = call("/api/import-data-txt", { bytes: variantSource });
+assert(variant.status === 200, `表集合不同的檔案應可匯入，實得 ${variant.status}`);
+assert(
+  !variant.json.documentLayout.tableOrder.includes("BMSP03"),
+  "原檔沒有的表不該憑空出現在版面裡",
+);
+assert(
+  variant.json.passthroughTables.BDMSIGN?.length === 1,
+  "沒建模的表必須唯讀保留下來",
+);
+const variantExported = call("/api/export", {
+  text: JSON.stringify({
+    tables: variant.json.tables,
+    extraTables: variant.json.extraTables,
+    documentLayout: variant.json.documentLayout,
+    passthroughTables: variant.json.passthroughTables,
+  }),
+});
+assert(
+  Buffer.compare(Buffer.from(variantExported.raw), Buffer.from(variantSource)) === 0,
+  "匯出必須逐位元組還原原檔的表集合與順序",
+);
+
 // 3) 驗證端點 ----------------------------------------------------------------
 const validated = call("/api/validate", { text: JSON.stringify({ tables: imported.json.tables }) });
 assert(validated.status === 200, "驗證應回 200");

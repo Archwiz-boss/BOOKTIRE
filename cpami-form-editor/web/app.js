@@ -611,6 +611,10 @@ const state = {
   sourceName: "空白案件",
   sourceZipFile: null,
   sourceZipDataTxtPath: "",
+  // 原檔的表順序／欄序，以及編輯器沒有建模、只做唯讀保留的表。載入既有 data.txt
+  // 時記下來，匯出時原樣寫回——舊系統要收得回去，表不能多也不能少。
+  documentLayout: null,
+  passthroughTables: {},
   sourceRows: [],
   sourceHeaders: [],
   mappings: {},
@@ -1942,12 +1946,22 @@ function hasExtraData() {
 }
 
 function caseEnvelope() {
-  return {
+  const envelope = {
     schemaVersion: state.schemaVersion,
     formSet: state.formSet,
     tables: standardTablesPayload(),
     extraTables: extraTablesPayload(),
   };
+  if (state.documentLayout) {
+    envelope.documentLayout = state.documentLayout;
+    envelope.passthroughTables = state.passthroughTables || {};
+  }
+  return envelope;
+}
+
+function adoptDocumentLayout(data) {
+  state.documentLayout = data?.documentLayout || null;
+  state.passthroughTables = data?.passthroughTables || {};
 }
 
 function sourceIsZip(file) {
@@ -2210,6 +2224,7 @@ async function caseBootstrap() {
   state.schemaVersion = data.schemaVersion;
   state.codebook = codebook;
   state.tables = mergeCaseTables(data.tables, data.extraTables);
+  adoptDocumentLayout(data);
   await refreshTemplates();
   data.defaultApplication = data.initialCase === "blank"
     ? caseNewBlank("空白案件", true)
@@ -2223,6 +2238,7 @@ async function caseImportDataTxt(file) {
     method: "POST", body: await file.arrayBuffer(),
   });
   state.tables = mergeCaseTables(data.tables, data.extraTables);
+  adoptDocumentLayout(data);
   state.sourceName = file.name;
   state.sourceZipFile = importingZip ? file : null;
   state.sourceZipDataTxtPath = data.package?.dataTxtPath || "";
@@ -2243,6 +2259,7 @@ async function caseImportJson(file) {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
   });
   state.tables = mergeCaseTables(data.tables, data.extraTables);
+  adoptDocumentLayout(data);
   state.formSet = Object.hasOwn(FORM_SETS, data.formSet) ? data.formSet : "A";
   const tables = FORM_SETS[state.formSet].tables;
   state.activeTable = tables[0] || "BMSBASE";
@@ -2257,6 +2274,9 @@ function caseNewBlank(sourceName = "新空白案件", withDefaults = false) {
   const emptyTables = {};
   for (const table of [...state.bootstrap.tableOrder, ...state.bootstrap.extraTableOrder]) emptyTables[table] = [];
   state.tables = emptyTables;
+  // 新案件不繼承任何原檔版面，回到模板的 13 表。
+  state.documentLayout = null;
+  state.passthroughTables = {};
   const base = blankRecord("BMSBASE");
   base.SEQ_NO = "1";
   base.LAST_MODIFY = "00001";

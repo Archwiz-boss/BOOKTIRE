@@ -237,7 +237,12 @@ assert case_import["extraTables"]["BMELVTR"][0]["ELEV_USE"] == "B"
 assert unsafe_case_import_status == 200
 assert unsafe_case_import["tables"]["BMSBASE"][0]["BUILDING_NAME"] == '範例"工程\n草稿'
 assert not unsafe_case_import["validation"]["ok"]
-assert any("雙引號或換行" in error for error in unsafe_case_import["validation"]["errors"])
+assert any("半形雙引號" in error for error in unsafe_case_import["validation"]["errors"])
+# 換行不再是錯誤——舊系統的 LongText 本來就會多行，解析與匯出都能原樣還原。
+assert any(
+    "含換行" in warning and "BUILDING_NAME" in warning
+    for warning in unsafe_case_import["validation"]["warnings"]
+)
 assert envelope_validation["extraCounts"]["BMSROAD"] == 1
 assert version_error_status == 400
 assert wrong_version in version_error["error"]

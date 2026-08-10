@@ -131,12 +131,47 @@ def bootstrap(schema: dict[str, Any], template_storage: dict[str, Any] | None = 
 def _imported_payload(data_txt: bytes, schema: dict[str, Any]) -> dict[str, Any]:
     parsed = core.parse_data_txt_bytes(data_txt)
     core.assert_parsed_matches_schema(parsed, schema)
-    prepared = core.prepare_payload({"tables": parsed["tables"]}, schema, fill_defaults=False)
+    layout = core.document_layout(parsed)
+    passthrough = core.passthrough_tables(parsed, schema)
+    prepared = core.prepare_payload(
+        {"tables": parsed["tables"]}, schema, fill_defaults=False, layout=layout
+    )
+    validation = core.validate_tables(prepared, schema)
+    # 位元組層級的提醒（Big5 重複碼）只有原始位元組看得出來，驗證階段已經拿不到。
+    validation["warnings"].extend(parsed.get("byteNotes", []))
+    validation["warnings"].extend(_layout_notes(layout, passthrough, schema))
     return {
         "tables": prepared,
+        # data.txt 內的表一律留在 data.txt 這一側。即使某張表（如 BMELVTR）在案件
+        # 擴充結構裡也有定義，把它搬去 extraTables 會讓同一份資料有兩個家，匯出時
+        # 不是重複寫入就是漏寫——原檔怎麼放，就怎麼還回去。
         "extraTables": {table: [] for table in schema.get("extraTableOrder", [])},
-        "validation": core.validate_tables(prepared, schema),
+        "documentLayout": layout,
+        "passthroughTables": passthrough,
+        "validation": validation,
     }
+
+
+def _layout_notes(
+    layout: dict[str, Any],
+    passthrough: dict[str, list[dict[str, Any]]],
+    schema: dict[str, Any],
+) -> list[str]:
+    """把「這份檔案跟模板不一樣」講清楚，因為它直接決定匯出會長什麼樣。"""
+    notes: list[str] = []
+    missing = [table for table in schema["tableOrder"] if table not in layout["tableOrder"]]
+    if missing:
+        notes.append(
+            "原檔沒有這些表：" + "、".join(missing) + "。"
+            "匯出時同樣不會輸出，以維持與原檔一致、可匯回舊系統。"
+        )
+    if passthrough:
+        detail = "、".join(f"{table}（{len(rows)} 筆）" for table, rows in passthrough.items())
+        notes.append(
+            "原檔多出編輯器沒有建模的表：" + detail + "。"
+            "這些資料唯讀保留，畫面不顯示，匯出時依原順序、原內容寫回，不會遺失。"
+        )
+    return notes
 
 
 def import_data_txt(raw: bytes, schema: dict[str, Any]) -> dict[str, Any]:
@@ -164,12 +199,18 @@ def validate(payload: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
 
 def export_data_txt(payload: dict[str, Any], schema: dict[str, Any]) -> tuple[bytes, dict[str, Any]]:
     """回傳 (CP950 位元組, 驗證結果)；驗證有 errors 時位元組為空。"""
-    tables = core.parse_envelope(payload, schema)
-    prepared = core.prepare_payload({"tables": tables}, schema, fill_defaults=True)
+    parsed = core.parse_case_envelope(payload, schema)
+    layout = parsed["documentLayout"]
+    prepared = core.prepare_payload(
+        {"tables": parsed["tables"]}, schema, fill_defaults=True, layout=layout
+    )
     validation = core.validate_tables(prepared, schema)
     if validation["errors"]:
         return b"", validation
-    return core.serialize_tables(prepared, schema), validation
+    raw = core.serialize_tables(
+        prepared, schema, layout=layout, passthrough=parsed["passthroughTables"]
+    )
+    return raw, validation
 
 
 def export_zip(

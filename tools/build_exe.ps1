@@ -36,7 +36,12 @@ if ($Name -notmatch '^[\x20-\x7E]+$') {
 
 Write-Host '[1/4] 檢查 Python 與 PyInstaller…' -ForegroundColor Cyan
 & $Python --version
-& $Python -m PyInstaller --version 2>$null
+
+# 偵測要透過 cmd 吞掉 stderr：Windows PowerShell 5.1 會把原生程式的 stderr
+# 包成 ErrorRecord，配上檔頭的 $ErrorActionPreference = 'Stop'，「還沒安裝
+# PyInstaller」這個本來就預期會發生的情況會直接讓腳本崩掉，永遠走不到下面
+# 的自動安裝。CI 用的是 pwsh 7，不會這樣，所以這個洞只在本機踩得到。
+& cmd.exe /c "`"$Python`" -m PyInstaller --version 2>nul"
 if ($LASTEXITCODE -ne 0) {
     Write-Host '      未安裝 PyInstaller，正在安裝…' -ForegroundColor Yellow
     & $Python -m pip install --disable-pip-version-check pyinstaller
@@ -88,6 +93,10 @@ $exe = Join-Path $DistDir "$Name.exe"
 if (-not (Test-Path $exe)) { throw "找不到產出的 $exe。" }
 
 # 用 --no-browser 起一個臨時連接埠，確認打包後仍讀得到 web/ 與 schema/。
+# 這裡刻意不加 --no-sqlite：共用範本走 --hidden-import sqlite_templates，
+# 用預設模式啟動才驗得到那個模組真的被打包進去。
+$runtimeDir = Join-Path $DistDir 'runtime'
+$runtimeExisted = Test-Path $runtimeDir
 $proc = Start-Process -FilePath $exe -ArgumentList '--no-browser', '--port', '8799' `
     -PassThru -WindowStyle Hidden
 try {
@@ -102,7 +111,18 @@ try {
     if (-not $ok) { throw '打包後的執行檔無法回應 /api/health，請檢查 --add-data 設定。' }
     Write-Host '      OK  /api/health 正常回應'
 } finally {
-    if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+    # onefile 的 exe 是 bootloader 父進程再帶一個真正執行 Python 的子進程；
+    # Stop-Process 只殺父進程，子進程會變孤兒繼續佔著 8799，下次重建就會
+    # 因為 dist\CPAMI-Editor.exe 被鎖住而 PermissionError。
+    if (-not $proc.HasExited) { & cmd.exe /c "taskkill /PID $($proc.Id) /T /F >nul 2>&1" }
+    $proc.WaitForExit(10000) | Out-Null
+}
+
+# 上面的驗證是用預設模式啟動的，launcher 會在 exe 旁建出 runtime\ 放共用範本。
+# 那是驗證的副產物，留著會讓「dist\ 就是可以整包交出去的東西」不再成立。
+if (-not $runtimeExisted -and (Test-Path $runtimeDir)) {
+    Remove-Item -Recurse -Force $runtimeDir
+    Write-Host '      已清除驗證過程產生的 runtime\'
 }
 
 if (-not $KeepBuildFiles) {

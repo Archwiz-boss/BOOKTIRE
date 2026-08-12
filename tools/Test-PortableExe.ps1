@@ -157,10 +157,13 @@ function Wait-Server([string]$Base, [Diagnostics.Process]$Process) {
 }
 
 function Stop-Target($Process) {
-    if ($Process -and -not $Process.HasExited) {
-        Stop-Process -Id $Process.Id -Force
-        $Process.WaitForExit(10000) | Out-Null
-    }
+    if (-not $Process -or $Process.HasExited) { return }
+    # onefile 的 exe 是 bootloader 父進程再帶一個真正執行 Python 的子進程，
+    # Stop-Process 只殺得掉父進程，子進程會變成孤兒繼續佔著連接埠——
+    # 下一輪驗收就會卡在埠檢查，或更糟：打到上一輪殘留的服務。
+    # 用 cmd 包住 taskkill 是為了讓它的輸出留在 cmd 裡，不要變成 ErrorRecord。
+    & cmd.exe /c "taskkill /PID $($Process.Id) /T /F >nul 2>&1"
+    $Process.WaitForExit(10000) | Out-Null
 }
 
 function New-TestZip([byte[]]$Fixture) {
@@ -292,8 +295,12 @@ try {
         $zipBefore.Dispose(); $zipAfter.Dispose(); $before.Dispose(); $after.Dispose()
     }
 
-    Assert-That (-not (Test-Path -LiteralPath $runtimeDir)) `
-        "--no-sqlite 模式不該寫入硬碟，卻出現了 $runtimeDir"
+    # runtime\ 若在驗收開始前就存在（build_exe.ps1 的驗證步驟、或上一輪的殘留），
+    # 這條就驗不出任何東西——據實跳過並在結果標明，不要拿它冤枉 --no-sqlite。
+    if (-not $runtimeExisted) {
+        Assert-That (-not (Test-Path -LiteralPath $runtimeDir)) `
+            "--no-sqlite 模式不該寫入硬碟，卻出現了 $runtimeDir"
+    }
 
     Stop-Target $process; $process = $null
 
@@ -341,11 +348,12 @@ try {
         status         = 'pass'
         mode           = if ($UseSource) { 'source' } else { 'exe' }
         target         = if ($UseSource) { Join-Path $AppDir 'launcher.py' } else { (Resolve-Path -LiteralPath $ExePath).Path }
-        fixtureSha256  = (Get-Sha256 $fixture)
-        fixtureLength  = $fixture.Length
-        exportSha256   = (Get-Sha256 $export.Bytes)
-        runtimeRebuilt = $rebuilt
-        runtimeSkipped = (-not $createdRuntime)
+        fixtureSha256      = (Get-Sha256 $fixture)
+        fixtureLength      = $fixture.Length
+        exportSha256       = (Get-Sha256 $export.Bytes)
+        noSqliteWriteCheck = if ($runtimeExisted) { 'skipped-runtime-existed' } else { 'checked' }
+        runtimeRebuilt     = $rebuilt
+        runtimeSkipped     = (-not $createdRuntime)
     } | ConvertTo-Json -Compress
     exit 0
 } catch {
